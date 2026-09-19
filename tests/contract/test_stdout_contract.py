@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 
 import pytest
-
 from conftest import run_calc
 
 ERROR_LINE = re.compile(r"^(MathError|SyntaxError|ValueError|ArgumentError): .+")
@@ -16,7 +15,10 @@ SUCCESS_CASES = [
     (["stat", "mean", "[1,2,3,4]"], "2.5000"),
     (["stat", "mode", "[1,2,2,3]"], "2"),
     (["stat", "sum", "[1,2,3]"], "6"),
-    (["finance", "pmt", "--rate", "0.05", "--periods", "10", "--principal", "1000"], "-129.5046"),
+    (
+        ["finance", "pmt", "--rate", "0.05", "--periods", "10", "--principal", "1000"],
+        "-129.5046",
+    ),
     (["matrix", "multiply", "[[1,2],[3,4]]", "[[1],[2]]"], "[[5],[11]]"),
     (["matrix", "transpose", "[[1,2],[3,4]]"], "[[1,3],[2,4]]"),
     (["convert-base", "255", "--from", "dec", "--to", "hex"], "ff"),
@@ -24,9 +26,15 @@ SUCCESS_CASES = [
     (["convert-unit", "1", "miles", "km"], "1.6093"),
     (["convert-unit", "100", "degC", "degF"], "212.0000"),
     (["calculus", "derive", "x**2", "--var", "x"], "2*x"),
-    (["calculus", "integrate", "x**2", "--var", "x", "--lower", "0", "--upper", "1"], "0.3333"),
+    (
+        ["calculus", "integrate", "x**2", "--var", "x", "--lower", "0", "--upper", "1"],
+        "0.3333",
+    ),
     (["physics-constant", "c"], "299792458.0000"),
-    (["physics", "kinematics", "--solve", "d", "--v0", "10", "--t", "2", "--a", "3"], "26.0000"),
+    (
+        ["physics", "kinematics", "--solve", "d", "--v0", "10", "--t", "2", "--a", "3"],
+        "26.0000",
+    ),
     (["physics", "force", "--solve", "F", "--m", "5", "--a", "2"], "10.0000"),
     (["physics", "energy", "--solve", "PE", "--m", "2", "--h", "5"], "98.0665"),
     (["vector", "dot", "[1,2,3]", "[4,5,6]"], "32.0000"),
@@ -43,7 +51,21 @@ FAILURE_CASES = [
     (["physics-constant", "notathing"], "ValueError"),
     (["physics", "kinematics", "--solve", "d"], "ArgumentError"),
     (["physics", "nope", "--solve", "d", "--v0", "1", "--t", "1"], "ArgumentError"),
-    (["finance", "pmt", "--rate", "0.05", "--periods", "10", "--pv", "1000", "--principal", "1000"], "ArgumentError"),
+    (
+        [
+            "finance",
+            "pmt",
+            "--rate",
+            "0.05",
+            "--periods",
+            "10",
+            "--pv",
+            "1000",
+            "--principal",
+            "1000",
+        ],
+        "ArgumentError",
+    ),
     (["finance", "pmt", "--rate", "0.05", "--periods", "10"], "ArgumentError"),
     (["vector", "dot", "[1,2]", "[1,2,3]"], "MathError"),
     (["stat", "mean", "[]"], "MathError"),

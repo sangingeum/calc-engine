@@ -98,9 +98,7 @@ def solve(domain: str, target: str, kwargs: dict[str, float]) -> float:
 
     equation, _ = candidates[0]
     substitution = {
-        sympy.Symbol(name): value
-        for name, value in effective_kwargs.items()
-        if name != target
+        sympy.Symbol(name): value for name, value in effective_kwargs.items() if name != target
     }
     solutions = sympy.solve(equation.subs(substitution), sympy.Symbol(target))
     return _pick(solutions, target)

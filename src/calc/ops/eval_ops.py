@@ -11,10 +11,36 @@ from calc.errors import MathError, SyntaxError_
 _NAMES = {"pi": math.pi, "tau": math.tau, "e": math.e}
 
 _FUNCTION_NAMES = (
-    "sqrt", "sin", "cos", "tan", "asin", "acos", "atan", "atan2",
-    "sinh", "cosh", "tanh", "log", "log2", "log10", "log1p", "exp",
-    "expm1", "pow", "fabs", "floor", "ceil", "trunc", "factorial",
-    "gcd", "lcm", "hypot", "degrees", "radians", "isqrt", "cbrt",
+    "sqrt",
+    "sin",
+    "cos",
+    "tan",
+    "asin",
+    "acos",
+    "atan",
+    "atan2",
+    "sinh",
+    "cosh",
+    "tanh",
+    "log",
+    "log2",
+    "log10",
+    "log1p",
+    "exp",
+    "expm1",
+    "pow",
+    "fabs",
+    "floor",
+    "ceil",
+    "trunc",
+    "factorial",
+    "gcd",
+    "lcm",
+    "hypot",
+    "degrees",
+    "radians",
+    "isqrt",
+    "cbrt",
 )
 _FUNCTIONS = {name: getattr(math, name) for name in _FUNCTION_NAMES}
 
@@ -27,5 +53,5 @@ def evaluate(expr: str) -> int | float:
         raise MathError(str(exc)) from None
     except (ValueError, OverflowError) as exc:
         raise MathError(str(exc)) from None
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — simpleeval raises many types; all mean SyntaxError
         raise SyntaxError_(f"invalid expression: {exc}") from None

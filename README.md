@@ -103,7 +103,7 @@ calc calculus limit "1/x" --var x --approach 0               # inf (see below)
 
 ```bash
 calc physics-constant c     # 299792458.0000  (speed of light, m/s)
-calc physics-constant G     # 6.6743e-11
+calc physics-constant G     # 6.674e-11
 ```
 
 Constants come from `scipy.constants`; unknown symbols are a `ValueError`.

@@ -8,8 +8,18 @@ import statistics
 from calc.errors import ArgumentError, MathError, SyntaxError_
 
 _OPS = (
-    "mean", "median", "mode", "stdev", "variance", "pvariance",
-    "sum", "min", "max", "count", "geometric_mean", "harmonic_mean",
+    "mean",
+    "median",
+    "mode",
+    "stdev",
+    "variance",
+    "pvariance",
+    "sum",
+    "min",
+    "max",
+    "count",
+    "geometric_mean",
+    "harmonic_mean",
 )
 
 
@@ -29,9 +39,7 @@ def stat(op: str, dataset: str) -> int | float:
     """Apply a statistics operation to a JSON array of numbers."""
     data = _parse_dataset(dataset)
     if op not in _OPS:
-        raise ArgumentError(
-            f"unknown stat operation: {op} (expected one of {', '.join(_OPS)})"
-        )
+        raise ArgumentError(f"unknown stat operation: {op} (expected one of {', '.join(_OPS)})")
     if op == "count":
         return len(data)
     if not data:

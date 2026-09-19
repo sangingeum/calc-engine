@@ -17,12 +17,12 @@ from sympy.parsing.sympy_parser import (
     standard_transformations,
 )
 
+from calc.errors import MathError, SyntaxError_
+
 _TRANSFORMATIONS = standard_transformations + (
     implicit_multiplication_application,
     convert_xor,
 )
-
-from calc.errors import MathError, SyntaxError_
 
 
 def parse_expression(expr: str) -> sympy.Expr:

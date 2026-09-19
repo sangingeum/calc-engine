@@ -35,7 +35,13 @@ def finance(
     if op == "pmt" and principal is None and pv is not None:
         principal, pv = pv, None
 
-    given = {"pv": pv, "fv": fv, "rate": rate, "periods": periods, "principal": principal}
+    given = {
+        "pv": pv,
+        "fv": fv,
+        "rate": rate,
+        "periods": periods,
+        "principal": principal,
+    }
     provided = {key for key, value in given.items() if value is not None}
     required = _REQUIREMENTS[op]
     if provided != required:

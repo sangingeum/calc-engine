@@ -46,7 +46,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("eval", parents=[precision_parent], help="evaluate a math expression")
     p.add_argument("expr", help="expression, e.g. '2+2' or 'sqrt(2)'")
 
-    p = sub.add_parser("stat", parents=[precision_parent], help="statistics over a JSON dataset")
+    p = sub.add_parser(
+        "stat", parents=[precision_parent], help="statistics over a JSON dataset"
+    )
     p.add_argument(
         "op",
         help=(
@@ -57,32 +59,54 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("dataset", help="JSON array of numbers, e.g. '[1,2,3]'")
 
     p = sub.add_parser(
-        "finance", parents=[precision_parent], help="financial operations (numpy-financial)"
+        "finance",
+        parents=[precision_parent],
+        help="financial operations (numpy-financial)",
     )
     p.add_argument("op", help="fv|pv|pmt")
     p.add_argument("--rate", type=float, default=None, help="interest rate per period")
     p.add_argument("--periods", type=float, default=None, help="number of periods")
-    p.add_argument("--pv", type=float, default=None, help="present value (pmt: alias of --principal)")
+    p.add_argument(
+        "--pv",
+        type=float,
+        default=None,
+        help="present value (pmt: alias of --principal)",
+    )
     p.add_argument("--fv", type=float, default=None, help="future value")
     p.add_argument("--principal", type=float, default=None, help="principal (pmt)")
 
-    p = sub.add_parser("matrix", parents=[precision_parent], help="matrix operations (JSON matrices)")
+    p = sub.add_parser(
+        "matrix", parents=[precision_parent], help="matrix operations (JSON matrices)"
+    )
     p.add_argument("op", help="multiply|add|subtract|inverse|determinant|transpose")
     p.add_argument("matrices", nargs="+", help="one or two JSON matrices")
 
     p = sub.add_parser(
-        "convert-base", parents=[precision_parent], help="integer base conversion (bare digit strings)"
+        "convert-base",
+        parents=[precision_parent],
+        help="integer base conversion (bare digit strings)",
     )
     p.add_argument("value", help="bare digit string, optional leading sign")
-    p.add_argument("--from", dest="from_base", required=True, help="source base: bin|oct|dec|hex|2..36")
-    p.add_argument("--to", dest="to_base", required=True, help="target base: bin|oct|dec|hex|2..36")
+    p.add_argument(
+        "--from",
+        dest="from_base",
+        required=True,
+        help="source base: bin|oct|dec|hex|2..36",
+    )
+    p.add_argument(
+        "--to", dest="to_base", required=True, help="target base: bin|oct|dec|hex|2..36"
+    )
 
-    p = sub.add_parser("convert-unit", parents=[precision_parent], help="unit conversion via pint")
+    p = sub.add_parser(
+        "convert-unit", parents=[precision_parent], help="unit conversion via pint"
+    )
     p.add_argument("value", type=float, help="numeric value")
     p.add_argument("src", help="source unit, e.g. miles, degC")
     p.add_argument("dst", help="target unit, e.g. km, degF")
 
-    p = sub.add_parser("calculus", parents=[precision_parent], help="derive|integrate|limit via sympy")
+    p = sub.add_parser(
+        "calculus", parents=[precision_parent], help="derive|integrate|limit via sympy"
+    )
     p.add_argument("op", help="derive|integrate|limit")
     p.add_argument("expr", help="expression in the variable, e.g. 'x**2'")
     p.add_argument("--var", required=True, help="variable name")
@@ -103,7 +127,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--precision", type=int, default=4, help=argparse.SUPPRESS)
     p.add_argument("symbols", nargs="*", help=argparse.SUPPRESS)
 
-    p = sub.add_parser("vector", parents=[precision_parent], help="vector operations (JSON vectors)")
+    p = sub.add_parser(
+        "vector", parents=[precision_parent], help="vector operations (JSON vectors)"
+    )
     p.add_argument("op", help="dot|cross|norm|add|subtract")
     p.add_argument("vectors", nargs="+", help="one or two JSON vectors")
 
@@ -136,7 +162,12 @@ def _handlers() -> dict:
         "eval": lambda a: eval_ops.evaluate(a.expr),
         "stat": lambda a: stat_ops.stat(a.op, a.dataset),
         "finance": lambda a: finance_ops.finance(
-            a.op, pv=a.pv, fv=a.fv, rate=a.rate, periods=a.periods, principal=a.principal
+            a.op,
+            pv=a.pv,
+            fv=a.fv,
+            rate=a.rate,
+            periods=a.periods,
+            principal=a.principal,
         ),
         "matrix": lambda a: matrix_ops.matrix(a.op, a.matrices),
         "convert-base": lambda a: base_ops.convert(a.value, a.from_base, a.to_base),
@@ -161,7 +192,7 @@ def _extract_physics_kwargs(argv: Sequence[str]) -> tuple[list[str], dict[str, f
         idx = list(argv).index("physics")
     except ValueError:
         return list(argv), {}
-    tokens = list(argv)[idx + 1:]
+    tokens = list(argv)[idx + 1 :]
     kept: list[str] = []
     kwargs: dict[str, float] = {}
     i = 0
@@ -200,7 +231,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 130
     except BrokenPipeError:
         return 1
-    except Exception:  # defensive: never leak a traceback to stdout
+    except Exception:  # noqa: BLE001 — defensive: never leak a traceback to stdout
         print("MathError: internal computation failure", file=sys.stderr)
         return 1
     try:

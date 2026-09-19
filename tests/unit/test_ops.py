@@ -166,7 +166,10 @@ class TestFinanceOps:
 
 class TestMatrixOps:
     def test_multiply(self) -> None:
-        assert matrix_ops.matrix("multiply", ["[[1,2],[3,4]]", "[[1],[2]]"]) == [[5.0], [11.0]]
+        assert matrix_ops.matrix("multiply", ["[[1,2],[3,4]]", "[[1],[2]]"]) == [
+            [5.0],
+            [11.0],
+        ]
 
     def test_add(self) -> None:
         assert matrix_ops.matrix("add", ["[[1,2]]", "[[3,4]]"]) == [[4.0, 6.0]]
@@ -175,13 +178,17 @@ class TestMatrixOps:
         assert matrix_ops.matrix("subtract", ["[[1,2]]", "[[3,4]]"]) == [[-2.0, -2.0]]
 
     def test_transpose(self) -> None:
-        assert matrix_ops.matrix("transpose", ["[[1,2],[3,4]]"]) == [[1.0, 3.0], [2.0, 4.0]]
+        assert matrix_ops.matrix("transpose", ["[[1,2],[3,4]]"]) == [
+            [1.0, 3.0],
+            [2.0, 4.0],
+        ]
 
     def test_determinant(self) -> None:
         assert matrix_ops.matrix("determinant", ["[[1,2],[3,4]]"]) == pytest.approx(-2.0)
 
     def test_inverse(self) -> None:
         result = matrix_ops.matrix("inverse", ["[[4,7],[2,6]]"])
+        assert isinstance(result, list) and isinstance(result[0], list)
         assert result[0] == pytest.approx([0.6, -0.7])
 
     def test_dimension_mismatch(self) -> None:
@@ -345,7 +352,9 @@ class TestPhysicsSolve:
         assert result == pytest.approx(2 * 5 * 9.80665)
 
     def test_potential_energy_custom_g(self) -> None:
-        assert physics_ops.solve("energy", "PE", {"m": 2, "h": 5, "g": 10}) == pytest.approx(100.0)
+        assert physics_ops.solve("energy", "PE", {"m": 2, "h": 5, "g": 10}) == pytest.approx(
+            100.0
+        )
 
     def test_v_squared_quadratic_positive_root(self) -> None:
         result = physics_ops.solve("kinematics", "v", {"v0": 0, "a": 3, "d": 27})
