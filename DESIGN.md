@@ -215,7 +215,12 @@ strings, stronger than goldens.
   SyntaxError.
 - Matrix parsing uses `json.loads` only (JSON, not Python literals — `ast` is
   avoided on principle; if JSON is rejected by the agent, error says so).
-- No file I/O, no network, no subprocess in any op module.
+- No file I/O, no network, no subprocess in any op module — with one
+  sanctioned exception: `regex_ops` runs its match in a short-lived
+  subprocess with a hard wall-clock timeout, solely as a
+  catastrophic-backtracking guard. The worker protocol uses a dedicated exit
+  code for invalid patterns; the worker never receives or executes arbitrary
+  code beyond `re.compile`/match on the passed strings.
 
 ## 6. Spec gaps raised explicitly
 

@@ -159,6 +159,22 @@ class TestFloatBits:
         assert isinstance(value, float)
         assert math.isnan(value)
 
+    def test_bits_to_float_out_of_range_literal(self) -> None:
+        # S1 (solomon review of 2e27647): the literal must fit the width;
+        # an out-of-range value is a typed MathError, not a generic crash.
+        with pytest.raises(MathError, match="does not fit a 32-bit integer"):
+            bits_ops.bits("bits-to-float", ["0x1ffffffff"], width=32)
+
+    def test_bits_to_float_signed_range_accepted(self) -> None:
+        # negative literals reinterpreted as unsigned width-bit patterns
+        value = bits_ops.bits("bits-to-float", ["-1"], width=32)
+        assert isinstance(value, float)
+        assert math.isnan(value)  # 0xffffffff is a NaN payload
+
+    def test_bits_to_float_width_64(self) -> None:
+        got = bits_ops.bits("bits-to-float", ["0x3ff0000000000000"], width=64)
+        assert got == pytest.approx(1.0)
+
 
 class TestEndian:
     def test_swap(self) -> None:

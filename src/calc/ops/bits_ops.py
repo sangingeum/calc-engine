@@ -14,6 +14,7 @@ import struct
 from typing import Literal, cast
 
 from calc.errors import ArgumentError, MathError, SyntaxError_
+from calc.ops.parse_utils import parse_hex_bytes
 
 _WIDTHS: tuple[int, ...] = (8, 16, 32, 64)
 
@@ -164,8 +165,11 @@ def _float_to_bits(value: int | float, width: int) -> str:
 
 def _bits_to_float(value: int, width: int) -> float:
     """Reinterpret bits (given as an integer) as an IEEE-754 float."""
+    # Same width-overflow contract as the integer ops: the literal must fit
+    # (signed range accepted), else MathError — not a generic OverflowError.
+    _checked_mask(value, width)
     code = ">d" if width == 64 else ">f"
-    raw = int(value).to_bytes(width // 8, "big", signed=value < 0)
+    raw = value.to_bytes(width // 8, "big", signed=value < 0)
     return struct.unpack(code, raw)[0]
 
 
@@ -183,11 +187,7 @@ def _resolve_order(order: str | None) -> _ByteOrder:
 
 
 def _parse_hex_bytes(text: str) -> bytes:
-    t = text.strip().lower()
-    try:
-        return bytes.fromhex(t)
-    except ValueError:
-        raise SyntaxError_(f"invalid hex byte string: {text!r}") from None
+    return parse_hex_bytes(text)
 
 
 def endian(

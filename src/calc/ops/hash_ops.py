@@ -13,6 +13,7 @@ import binascii
 import hashlib
 
 from calc.errors import ArgumentError, SyntaxError_
+from calc.ops.parse_utils import parse_hex_bytes
 
 _HASHES: dict[str, str] = {
     "md5": "md5",
@@ -39,10 +40,7 @@ def _input_bytes(data: str, mode: str | None) -> bytes:
     fmt = _resolve_input(mode)
     if fmt == _TEXT:
         return data.encode("utf-8")
-    try:
-        return binascii.unhexlify(data.strip())
-    except (binascii.Error, ValueError):
-        raise SyntaxError_(f"invalid hex input: {data!r}") from None
+    return parse_hex_bytes(data)
 
 
 def hash_digest(algorithm: str, data: str, *, input_format: str | None = None) -> str:
@@ -149,13 +147,16 @@ def base64_code(
         )
     if output_format not in (None, _HEX):
         raise ArgumentError(f"unknown output format: {output_format!r} (expected hex)")
-    alphabet = (
-        (lambda data: b64.urlsafe_b64decode(data + "=" * (-len(data) % 4)))
-        if urlsafe
-        else (lambda data: b64.b64decode(data, validate=True))
-    )
+    # Strict validation for both alphabets: stdlib decoders silently ignore
+    # invalid characters by default, which would break the SyntaxError contract.
+    if urlsafe:
+        decoder = lambda data: b64.b64decode(  # noqa: E731 — trivial adapter
+            data, altchars=b"-_", validate=True
+        )
+    else:
+        decoder = lambda data: b64.b64decode(data, validate=True)  # noqa: E731
     try:
-        raw = alphabet(data.strip())
+        raw = decoder(data.strip())
     except (binascii.Error, ValueError):
         raise SyntaxError_(f"invalid base64 input: {data!r}") from None
     if output_format == _HEX:

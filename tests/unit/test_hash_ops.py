@@ -33,7 +33,7 @@ class TestHash:
             hash_ops.hash_digest("sh999", "x")
 
     def test_bad_hex_input(self) -> None:
-        with pytest.raises(SyntaxError_, match="invalid hex input"):
+        with pytest.raises(SyntaxError_, match="invalid hex byte string"):
             hash_ops.hash_digest("md5", "zz", input_format="hex")
 
     def test_bad_input_format(self) -> None:
@@ -69,7 +69,7 @@ class TestCrc:
             hash_ops.crc_digest("crc33", "123456789")
 
     def test_bad_hex_input(self) -> None:
-        with pytest.raises(SyntaxError_, match="invalid hex input"):
+        with pytest.raises(SyntaxError_, match="invalid hex byte string"):
             hash_ops.crc_digest("crc32", "nothex", input_format="hex")
 
     def test_width_zero_padding(self) -> None:
@@ -105,6 +105,13 @@ class TestBase64:
     def test_decode_invalid(self) -> None:
         with pytest.raises(SyntaxError_, match="invalid base64 input"):
             hash_ops.base64_code("decode", "!!!")
+
+    def test_decode_urlsafe_invalid_strict(self) -> None:
+        # strict validation applies to the URL-safe alphabet too
+        with pytest.raises(SyntaxError_, match="invalid base64 input"):
+            hash_ops.base64_code("decode", "!!!", urlsafe=True)
+        with pytest.raises(SyntaxError_, match="invalid base64 input"):
+            hash_ops.base64_code("decode", "a b", urlsafe=True)
 
     def test_unknown_op(self) -> None:
         with pytest.raises(ArgumentError, match="unknown base64 operation"):

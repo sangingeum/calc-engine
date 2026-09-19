@@ -16,6 +16,7 @@ import sys
 from calc.errors import ArgumentError, MathError, SyntaxError_
 
 _TIMEOUT_SECONDS = 2.0
+_INVALID_PATTERN_EXIT = 3  # worker protocol: invalid pattern, not a crash
 
 _FLAVORS = frozenset({"python"})
 
@@ -59,7 +60,11 @@ def _run_worker(payload: dict[str, object]) -> object:
         "subject = payload['subject']\n"
         "flags = payload['flags']\n"
         "op = payload['op']\n"
-        "compiled = re.compile(pattern, flags)  # invalid pattern -> SyntaxError here\n"
+        "try:\n"
+        "    compiled = re.compile(pattern, flags)\n"
+        "except re.error as exc:  # invalid pattern: protocol exit code, not a crash\n"
+        "    print(f'INVALID_PATTERN: {exc}')\n"
+        "    sys.exit(3)\n"
         "if op == 'test':\n"
         "    out = compiled.search(subject) is not None\n"
         "elif op == 'findall':\n"
@@ -85,9 +90,9 @@ def _run_worker(payload: dict[str, object]) -> object:
             f"regex exceeded {_TIMEOUT_SECONDS:g}s execution budget (possible "
             "catastrophic backtracking)"
         ) from exc
+    if proc.returncode == _INVALID_PATTERN_EXIT:
+        raise SyntaxError_(f"invalid regex pattern: {payload['pattern']!r}")
     if proc.returncode != 0:
-        if "re.error" in proc.stderr or "error at position" in proc.stderr:
-            raise SyntaxError_(f"invalid regex pattern: {payload['pattern']!r}")
         raise MathError(f"regex worker failed: {proc.stderr.strip()}")
     return json.loads(proc.stdout)
 
