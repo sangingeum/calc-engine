@@ -16,11 +16,15 @@ from collections.abc import Sequence
 from calc.errors import ArgumentError, CalcError
 from calc.ops import (
     base_ops,
+    bits_ops,
     calculus_ops,
+    datetime_ops,
     eval_ops,
     finance_ops,
+    hash_ops,
     matrix_ops,
     physics_ops,
+    regex_ops,
     stat_ops,
     unit_ops,
     vector_ops,
@@ -133,6 +137,82 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("op", help="dot|cross|norm|add|subtract")
     p.add_argument("vectors", nargs="+", help="one or two JSON vectors")
 
+    p = sub.add_parser(
+        "bits", parents=[precision_parent], help="fixed-width integer operations"
+    )
+    p.add_argument(
+        "op",
+        help="and|or|xor|not|shl|shr|sar|rol|ror|popcount|clz|ctz|to-signed|to-unsigned|float-to-bits|bits-to-float",
+    )
+    p.add_argument(
+        "values", nargs="+", help="integer literals: 0x/0b/decimal (float for float-to-bits)"
+    )
+    p.add_argument("--width", type=int, default=None, help="bit width: 8|16|32|64 (required)")
+    p.add_argument("--format", default=None, help="output format: hex|bin (default decimal)")
+    p.add_argument(
+        "--signed", action="store_true", help="interpret results as signed two's complement"
+    )
+
+    p = sub.add_parser("endian", parents=[precision_parent], help="byte-order conversions")
+    p.add_argument("op", help="swap|to-bytes|from-bytes")
+    p.add_argument(
+        "value", help="integer literal (swap/to-bytes) or hex byte string (from-bytes)"
+    )
+    p.add_argument("--width", type=int, default=None, help="bit width: 8|16|32|64 (required)")
+    p.add_argument(
+        "--order", default=None, help="byte order for to-bytes/from-bytes: little|big"
+    )
+
+    p = sub.add_parser("hash", parents=[precision_parent], help="hash digests")
+    p.add_argument("algorithm", help="md5|sha1|sha256|sha512|sha3_256|blake2b")
+    p.add_argument("data", help="input text (or hex bytes with --input hex)")
+    p.add_argument("--input", default=None, help="input format: text|hex (default text)")
+
+    p = sub.add_parser("crc", parents=[precision_parent], help="CRC digests")
+    p.add_argument(
+        "variant", help="crc32|crc32c|crc16-ccitt-false|crc16-xmodem|crc16-modbus|crc8"
+    )
+    p.add_argument("data", help="input text (or hex bytes with --input hex)")
+    p.add_argument("--input", default=None, help="input format: text|hex (default text)")
+
+    p = sub.add_parser("base64", parents=[precision_parent], help="base64 encode/decode")
+    p.add_argument("op", help="encode|decode")
+    p.add_argument("data", help="text to encode, or base64 to decode")
+    p.add_argument("--urlsafe", action="store_true", help="use the URL-safe alphabet (-_)")
+    p.add_argument("--output", default=None, help="decode output format: hex (default UTF-8)")
+
+    p = sub.add_parser(
+        "datetime",
+        parents=[precision_parent],
+        help="date/time operations (reference time always passed in)",
+    )
+    p.add_argument("op", help="from-epoch|to-epoch|diff|add|weekday|convert-tz")
+    p.add_argument("timestamps", nargs="+", help="epoch seconds, ISO-8601 timestamp, or date")
+    p.add_argument("--tz", default=None, help="display/source timezone, e.g. Asia/Seoul")
+    p.add_argument(
+        "--from",
+        dest="from_tz",
+        default=None,
+        help="source timezone for convert-tz (naive input)",
+    )
+    p.add_argument("--to", dest="to_tz", default=None, help="target timezone for convert-tz")
+    p.add_argument("--unit", default=None, help="diff unit: seconds|minutes|hours|days")
+    p.add_argument("--days", type=float, default=0.0, help="add: days")
+    p.add_argument("--hours", type=float, default=0.0, help="add: hours")
+    p.add_argument("--minutes", type=float, default=0.0, help="add: minutes")
+    p.add_argument("--seconds", type=float, default=0.0, help="add: seconds")
+    p.add_argument("--weeks", type=float, default=0.0, help="add: weeks")
+
+    p = sub.add_parser(
+        "regex", parents=[precision_parent], help="regex operations (Python dialect only)"
+    )
+    p.add_argument("op", help="test|findall|groups|sub")
+    p.add_argument(
+        "tokens", nargs="+", help="pattern + subject (sub: pattern + replacement + subject)"
+    )
+    p.add_argument("--flags", default=None, help="flag letters, subset of i m s x a")
+    p.add_argument("--flavor", default=None, help="regex flavor (v1: python only)")
+
     return parser
 
 
@@ -178,7 +258,32 @@ def _handlers() -> dict:
         "physics-constant": lambda a: physics_ops.constant(a.symbol),
         "physics": lambda a: physics_ops.solve(a.domain, a.solve, a.kwargs),
         "vector": lambda a: vector_ops.vector(a.op, a.vectors),
+        "bits": lambda a: bits_ops.bits(
+            a.op, a.values, width=a.width, fmt=a.format, signed=a.signed
+        ),
+        "endian": lambda a: bits_ops.endian(a.op, a.value, width=a.width, order=a.order),
+        "hash": lambda a: hash_ops.hash_digest(a.algorithm, a.data, input_format=a.input),
+        "crc": lambda a: hash_ops.crc_digest(a.variant, a.data, input_format=a.input),
+        "base64": lambda a: hash_ops.base64_code(
+            a.op, a.data, urlsafe=a.urlsafe, output_format=a.output
+        ),
+        "datetime": lambda a: _datetime_handler(a),
+        "regex": lambda a: _regex_handler(a),
     }
+
+
+def _regex_handler(a: argparse.Namespace) -> object:
+    """Route the regex subcommand's ops (sub takes pattern+replacement+subject)."""
+    if a.op == "sub":
+        if len(a.tokens) != 3:
+            raise ArgumentError("regex sub takes exactly pattern, replacement, and subject")
+        pattern, replacement, subject = a.tokens
+        return regex_ops.regex(
+            a.op, pattern, subject, flags=a.flags, flavor=a.flavor, replacement=replacement
+        )
+    if len(a.tokens) != 2:
+        raise ArgumentError(f"regex {a.op} takes exactly a pattern and a subject")
+    return regex_ops.regex(a.op, a.tokens[0], a.tokens[1], flags=a.flags, flavor=a.flavor)
 
 
 def _extract_physics_kwargs(argv: Sequence[str]) -> tuple[list[str], dict[str, float]]:
@@ -212,6 +317,48 @@ def _extract_physics_kwargs(argv: Sequence[str]) -> tuple[list[str], dict[str, f
             kept.append(token)
             i += 1
     return list(argv)[: idx + 1] + kept, kwargs
+
+
+def _datetime_handler(a: argparse.Namespace) -> object:
+    """Route the datetime subcommand's ops; --to defaults to UTC."""
+    if a.op == "from-epoch":
+        if len(a.timestamps) != 1:
+            raise ArgumentError("datetime from-epoch takes exactly 1 timestamp")
+        return datetime_ops.from_epoch(a.timestamps[0], tz=a.tz)
+    if a.op == "to-epoch":
+        if len(a.timestamps) != 1:
+            raise ArgumentError("datetime to-epoch takes exactly 1 timestamp")
+        return datetime_ops.to_epoch(a.timestamps[0])
+    if a.op == "diff":
+        if len(a.timestamps) != 2:
+            raise ArgumentError("datetime diff takes exactly 2 timestamps")
+        return datetime_ops.diff(a.timestamps[0], a.timestamps[1], unit=a.unit or "seconds")
+    if a.op == "add":
+        if len(a.timestamps) != 1:
+            raise ArgumentError("datetime add takes exactly 1 timestamp")
+        return datetime_ops.add(
+            a.timestamps[0],
+            days=a.days,
+            hours=a.hours,
+            minutes=a.minutes,
+            seconds=a.seconds,
+            weeks=a.weeks,
+            tz=a.tz,
+        )
+    if a.op == "weekday":
+        if len(a.timestamps) != 1:
+            raise ArgumentError("datetime weekday takes exactly 1 date")
+        return datetime_ops.weekday(a.timestamps[0], tz=a.tz)
+    if a.op == "convert-tz":
+        if len(a.timestamps) != 1:
+            raise ArgumentError("datetime convert-tz takes exactly 1 timestamp")
+        return datetime_ops.convert_tz(
+            a.timestamps[0], from_tz=a.from_tz, to_tz=a.to_tz or "UTC"
+        )
+    raise ArgumentError(
+        "unknown datetime operation: "
+        f"{a.op!r} (expected from-epoch|to-epoch|diff|add|weekday|convert-tz)"
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:

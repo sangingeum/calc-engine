@@ -139,6 +139,113 @@ calc vector norm "[3,4]"              # 5.0000
 Operations: `dot, cross, norm, add, subtract`. Vectors are strict JSON
 arrays of numbers.
 
+### bits — fixed-width integer operations
+
+`--width` is **required** (8|16|32|64); omitting it is an `ArgumentError`.
+Integers accept `0x`, `0b`, and decimal (with sign); a value that does not
+fit the width is a `MathError`. Default output is decimal; `--format hex|bin`
+renders lowercase, zero-padded, no prefix. `--signed` interprets results as
+two's complement.
+
+```bash
+calc bits and 0xF0 0x3C --width 8                # 48
+calc bits not 0x0F --width 8                     # 240
+calc bits sar -128 1 --width 8 --signed          # -64
+calc bits rol 0x81 1 --width 8                   # 3
+calc bits popcount 255 --width 8                 # 8
+calc bits clz 1 --width 32                       # 31
+calc bits to-signed 0xFF --width 8               # -1
+calc bits float-to-bits 1.0 --width 32           # 3f800000
+calc bits bits-to-float 0x3fc00000 --width 32    # 1.5000
+calc bits and 0xF0 0x3C --width 8 --format hex   # 30
+```
+
+Operations: `and or xor not shl shr sar rol ror popcount clz ctz
+to-signed to-unsigned float-to-bits bits-to-float`.
+
+### endian — byte-order conversions
+
+Separate from `bits` by design: endianness converts between values and byte
+sequences. `swap`/`to-bytes` output lowercase hex; `from-bytes` takes a hex
+byte string and outputs decimal.
+
+```bash
+calc endian swap 0x12345678 --width 32                    # 78563412
+calc endian to-bytes 0x12345678 --width 32 --order little # 78563412
+calc endian from-bytes 78563412 --order little            # 305419896
+```
+
+### hash — digests
+
+Default input is UTF-8 text; `--input hex` treats it as raw bytes.
+
+```bash
+calc hash sha256 hello              # 2cf24dba5fb0...b9824
+calc hash md5 hello                 # 5d41402abc4b2a76b9719d911017c592
+calc hash sha256 68656c6c6f --input hex
+```
+
+Algorithms: `md5, sha1, sha256, sha512, sha3_256, blake2b`.
+
+### crc — CRC digests (fixed variant registry)
+
+```bash
+calc crc crc32 "123456789"              # cbf43926
+calc crc crc32c "123456789"             # e3069283
+calc crc crc16-ccitt-false "123456789"  # 29b1
+calc crc crc16-xmodem "123456789"       # 31c3
+calc crc crc16-modbus "123456789"       # 4b37
+calc crc crc8 "123456789"               # f4
+```
+
+Variants: `crc32, crc32c, crc16-ccitt-false, crc16-xmodem, crc16-modbus, crc8`
+(parameters fixed by name; `--input hex` supported like `hash`).
+
+### base64 — encode/decode
+
+```bash
+calc base64 encode "hello"              # aGVsbG8=
+calc base64 decode "aGVsbG8="           # hello
+calc base64 decode "aGVsbG8=" --output hex   # 68656c6c6f (for non-UTF-8 bytes)
+calc base64 encode "hello?>" --urlsafe  # URL-safe alphabet (-_)
+```
+
+### datetime — date/time operations
+
+The reference time is always passed in as an argument (no `now`). Output is
+ISO-8601 with explicit offset. **Naive timestamps are an `ArgumentError`**
+unless `--tz`/`--from` supplies the zone; unknown timezones are a
+`ValueError`. `add` supports only `--days --hours --minutes --seconds --weeks`
+(month arithmetic is deliberately absent — "Jan 31 + 1 month" is ambiguous).
+
+```bash
+calc datetime from-epoch 1700000000                       # 2023-11-14T22:13:20+00:00
+calc datetime from-epoch 1700000000 --tz Asia/Seoul       # 2023-11-15T07:13:20+09:00
+calc datetime to-epoch "2023-11-14T22:13:20+00:00"        # 1700000000
+calc datetime diff "2024-01-01T00:00:00+00:00" "2024-03-01T00:00:00+00:00" --unit days
+                                                          # 60.0000 (right - left)
+calc datetime add "2024-02-28T12:00:00+00:00" --days 2    # 2024-03-01T12:00:00+00:00
+calc datetime weekday "2024-02-29"                        # Thursday
+calc datetime convert-tz "2024-03-10T12:00:00" --from America/New_York --to Asia/Seoul
+                                                          # 2024-03-11T01:00:00+09:00
+```
+
+### regex — pattern operations (Python dialect only)
+
+Python `re` dialect only in v1 (`--flavor python`); verify patterns
+separately for other languages. Matching runs in a subprocess with a 2 s
+execution budget — catastrophic backtracking is a `MathError`, not a hang.
+`test` returning false is a normal success (exit 0); only an invalid pattern
+is a `SyntaxError`. Flag letters: `i m s x a`.
+
+```bash
+calc regex test '^\d+$' "12345"               # true
+calc regex test 'hello' "HELLO" --flags i     # true
+calc regex findall '\d+' "a1b22c333"          # [1,22,333]
+calc regex groups '(\w+)@(\w+)\.com' "x bob@example.com y"   # [bob,example]
+calc regex sub '\s+' ' ' "a   b  c"           # a b c
+```
+
 ## Global options
 
 `--precision N` (default `4`) applies to float rendering on every
@@ -155,7 +262,8 @@ non-real results are a `MathError`.
 | `MathError` | invalid math: division by zero, bad dimensions, singular inverse, non-real result |
 | `SyntaxError` | bad input formatting: unparseable expression, invalid JSON, invalid digits |
 | `ValueError` | unsupported unit or unknown physical constant |
-| `ArgumentError` | missing/extra arguments, unknown operation or symbol |
+| `ArgumentError` | missing/extra arguments, unknown operation/algorithm/CRC variant/symbol, naive timestamp without --tz/--from, missing --width |
+| `MathError` | invalid math: division by zero, bad dimensions, singular inverse, non-real result, value does not fit the bit width, negative shift, regex execution budget exceeded |
 
 ## Agent integration contract
 
@@ -175,3 +283,5 @@ An agent should invoke `calc <subcommand> [args]` and:
   invoked; dunder attribute access, `__import__`, and `open` fail.
 - Matrix/vector parsing is strict JSON (`json.loads`), never Python literals.
 - No file I/O, no network, no subprocesses in the computation modules.
+  (Exception: `regex` runs its match in a short-lived subprocess as a
+  catastrophic-backtracking guard — no untrusted code execution either way.)

@@ -1,6 +1,6 @@
 ---
 name: calc-engine
-description: Deterministic `calc` CLI math engine for AI agents — zero-chat stdout, typed stderr errors, 10 subcommands (eval, stat, finance, matrix, convert-base, convert-unit, calculus, physics-constant, physics, vector). Use whenever an agent needs safe computation offloaded to a subprocess.
+description: Deterministic `calc` CLI math engine for AI agents — zero-chat stdout, typed stderr errors, 17 subcommands (eval, stat, finance, matrix, convert-base, convert-unit, calculus, physics-constant, physics, vector, bits, endian, hash, crc, base64, datetime, regex). Use whenever an agent needs safe computation offloaded to a subprocess.
 ---
 
 # calc — CLI math engine for agents
@@ -167,6 +167,55 @@ calc calculus limit "1/x" --var x --approach 0
 calc physics kinematics --solve d --v0 10 --t 2 --a 3         # registry below
 calc vector dot "[1,2,3]" "[4,5,6]"   # dot|cross|norm|add|subtract (strict JSON)
 ```
+
+### Additional subcommands (quick reference)
+
+```bash
+calc bits and 0xF0 0x3C --width 8     # fixed-width integer ops; --width REQUIRED (8|16|32|64)
+                                      # and|or|xor|not|shl|shr|sar|rol|ror|popcount|clz|ctz|to-signed|to-unsigned|float-to-bits|bits-to-float
+                                      # input: 0x/0b/decimal; output decimal by default, --format hex|bin (lowercase, zero-padded, no prefix); --signed for two's-complement view
+calc bits and 0xF0 0x3C --width 8 --format hex   # 30
+calc bits float-to-bits 1.0 --width 32           # 3f800000
+calc endian swap 0x12345678 --width 32           # 78563412 (swap|to-bytes|from-bytes; --width required for swap/to-bytes)
+calc endian to-bytes 0x12345678 --width 32 --order little  # 78563412
+calc endian from-bytes 78563412 --order little   # 305419896 (input hex bytes, output decimal)
+calc hash sha256 "hello"                # md5|sha1|sha256|sha512|sha3_256|blake2b; input is UTF-8 text
+calc hash sha256 68656c6c6f --input hex # raw bytes via hex
+calc crc crc32 "123456789"              # cbf43926 (check values are unit tests)
+calc crc crc32c "123456789"             # e3069283
+calc crc crc16-ccitt-false "123456789"  # 29b1
+calc crc crc16-xmodem "123456789"       # 31c3
+calc crc crc16-modbus "123456789"       # 4b37
+calc crc crc8 "123456789"               # f4
+calc base64 encode "hello"              # aGVsbG8=
+calc base64 decode "aGVsbG8="           # hello
+calc base64 decode "aGVsbG8=" --output hex   # 68656c6c6f (non-UTF-8 bytes)
+calc base64 encode "hello?>" --urlsafe  # URL-safe alphabet (-_)
+calc datetime from-epoch 1700000000                        # 2023-11-14T22:13:20+00:00
+calc datetime from-epoch 1700000000 --tz Asia/Seoul        # 2023-11-15T07:13:20+09:00
+calc datetime to-epoch "2023-11-14T22:13:20+00:00"         # 1700000000
+calc datetime diff "2024-01-01T00:00:00+00:00" "2024-03-01T00:00:00+00:00" --unit days   # 60.0000 (right - left)
+calc datetime add "2024-02-28T12:00:00+00:00" --days 2     # 2024-03-01T12:00:00+00:00
+calc datetime weekday "2024-02-29"                         # Thursday
+calc datetime convert-tz "2024-03-10T12:00:00" --from America/New_York --to Asia/Seoul   # 2024-03-11T01:00:00+09:00
+calc regex test '^\d+$' "12345"                 # true
+calc regex findall '\d+' "a1b22c333"            # [1,22,333]
+calc regex groups '(\w+)@(\w+)\.com' "x bob@example.com y"   # [bob,example]
+calc regex sub '\s+' ' ' "a   b  c"             # a b c
+calc regex test 'hello' "HELLO" --flags i       # true (flags: subset of i m s x a)
+```
+
+Notes:
+
+- **bits/endian**: omitting `--width` (or an unsupported width) is
+  `ArgumentError`; a value that does not fit the width is `MathError`.
+- **datetime**: a naive timestamp (no offset) without `--tz`/`--from` is an
+  `ArgumentError`; unknown timezone is `ValueError`; `add` supports only
+  days/hours/minutes/seconds/weeks (no month arithmetic).
+- **regex**: **Python dialect only; verify separately for other languages.**
+  `test` returning false is a normal success (exit 0); invalid pattern is
+  `SyntaxError`; matching is guarded by a 2 s subprocess timeout
+  (catastrophic backtracking -> `MathError`).
 
 ### physics equation registry (v1 — fixed and reviewable)
 

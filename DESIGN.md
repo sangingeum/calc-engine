@@ -134,11 +134,19 @@ messages actionable.
 ### 3.3 Error taxonomy (errors.py)
 
 ```python
-class CalcError(Exception): ...          # base, never raised directly
-class MathError(CalcError): ...          # invalid math: div-by-zero, bad matrix dims
-class SyntaxError_(CalcError): ...       # bad input formatting: bad expr, invalid JSON
-class UnitError(CalcError): ...          # unsupported unit/constant (maps to ValueError: prefix)
-class ArgumentError(CalcError): ...      # missing/extra variables, bad operation choice
+class CalcError(Exception): ...  # base, never raised directly
+
+
+class MathError(CalcError): ...  # invalid math: div-by-zero, bad matrix dims
+
+
+class SyntaxError_(CalcError): ...  # bad input formatting: bad expr, invalid JSON
+
+
+class UnitError(CalcError): ...  # unsupported unit/constant (maps to ValueError: prefix)
+
+
+class ArgumentError(CalcError): ...  # missing/extra variables, bad operation choice
 ```
 
 The class names deliberately differ from the built-ins; the *stderr prefix*
@@ -157,7 +165,7 @@ except CalcError as e:
 except Exception:  # defensive: unknown crash must NOT leak a traceback to stdout
     print("MathError: internal computation failure", file=sys.stderr)
     sys.exit(1)
-print(render(result))   # sole stdout writer in the entire program
+print(render(result))  # sole stdout writer in the entire program
 ```
 
 Notes:
