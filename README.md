@@ -142,7 +142,10 @@ arrays of numbers.
 ## Global options
 
 `--precision N` (default `4`) applies to float rendering on every
-subcommand. `inf`, `-inf`, and `nan` render literally; complex or
+subcommand. Within the magnitude band [1e-4, 1e16) (and for exact zero) it
+controls decimal places (fixed-point); outside the band it controls
+significant digits via general format (e.g. `calc physics-constant G` →
+`6.674e-11`). `inf`, `-inf`, and `nan` render literally; complex or
 non-real results are a `MathError`.
 
 ## Error taxonomy

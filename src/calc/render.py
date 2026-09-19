@@ -35,4 +35,12 @@ def _format_float(value: float, precision: int) -> str:
         return "nan"
     if math.isinf(value):
         return "inf" if value > 0 else "-inf"
-    return f"{value:.{precision}f}"
+    # Fixed-point only where precision decimal places are meaningful; general
+    # format elsewhere keeps --precision as significant digits instead of
+    # collapsing small/large magnitudes to 0.0000.
+    # Band: exact 0, or |x| in [1e-4, 1e16). Nonzero values below 1e-4 would
+    # zero out at precision 4; above 1e16 fixed-point would render a 17-digit
+    # integer string.
+    if value == 0 or 1e-4 <= abs(value) < 1e16:
+        return f"{value:.{precision}f}"
+    return f"{value:.{precision}g}"

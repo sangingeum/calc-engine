@@ -66,10 +66,25 @@ class TestRender:
     def test_negative_zero_avoided(self) -> None:
         assert render(0.0) == "0.0000"
 
+    def test_zero_inside_band_renders_fixed_point(self) -> None:
+        # Exact zero stays fixed-point even at precision 0.
+        assert render(0.0, 0) == "0"
+
     def test_inf_nan_passthrough(self) -> None:
         assert render(float("inf")) == "inf"
         assert render(float("-inf")) == "-inf"
         assert render(float("nan")) == "nan"
+
+    def test_small_magnitude_uses_general_format(self) -> None:
+        assert render(6.6743e-11, 4) == "6.674e-11"
+        assert render(1e-5) == "1e-05"
+
+    def test_large_magnitude_uses_general_format(self) -> None:
+        assert render(1.23e17, 4) == "1.23e+17"
+
+    def test_band_edges_use_fixed_point(self) -> None:
+        assert render(1e-4) == "0.0001"
+        assert render(9.999e15) == "9999000000000000.0000"
 
     def test_nested_list(self) -> None:
         assert render([[1.0, 2.0], [3.0, 4.0]], 0) == "[[1,2],[3,4]]"
