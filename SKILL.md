@@ -209,6 +209,9 @@ Notes:
 
 - **bits/endian**: omitting `--width` (or an unsupported width) is
   `ArgumentError`; a value that does not fit the width is `MathError`.
+  `float-to-bits`/`bits-to-float` require `--width 32|64` (IEEE-754
+  binary32/binary64); width 8/16 is an `ArgumentError` (no half-precision
+  in v1).
 - **datetime**: a naive timestamp (no offset) without `--tz`/`--from` is an
   `ArgumentError`; unknown timezone is `ValueError`; `add` supports only
   days/hours/minutes/seconds/weeks (no month arithmetic).

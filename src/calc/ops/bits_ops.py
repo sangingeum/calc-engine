@@ -20,6 +20,7 @@ _WIDTHS: tuple[int, ...] = (8, 16, 32, 64)
 
 _UNARY_OPS = frozenset({"not", "popcount", "clz", "ctz", "to-signed", "to-unsigned"})
 _BINARY_OPS = frozenset({"and", "or", "xor", "shl", "shr", "sar", "rol", "ror"})
+_FLOAT_WIDTHS = frozenset({32, 64})
 _OPS = _UNARY_OPS | _BINARY_OPS | {"float-to-bits", "bits-to-float"}
 
 
@@ -156,6 +157,13 @@ def bits(
 
 def _float_to_bits(value: int | float, width: int) -> str:
     """Reinterpret a float's IEEE-754 representation as bits (hex string)."""
+    # IEEE-754 binary formats are 32/64 bits only in struct terms; other
+    # widths (8/16) are an ArgumentError, never a silent wrong-width render.
+    if width not in _FLOAT_WIDTHS:
+        raise ArgumentError(
+            f"float conversion requires --width 32 or 64; {width} is not an "
+            "IEEE-754 binary format"
+        )
     try:
         packed = struct.pack(">d" if width == 64 else ">f", float(value))
     except (OverflowError, struct.error) as exc:
@@ -165,6 +173,11 @@ def _float_to_bits(value: int | float, width: int) -> str:
 
 def _bits_to_float(value: int, width: int) -> float:
     """Reinterpret bits (given as an integer) as an IEEE-754 float."""
+    if width not in _FLOAT_WIDTHS:
+        raise ArgumentError(
+            f"float conversion requires --width 32 or 64; {width} is not an "
+            "IEEE-754 binary format"
+        )
     # Same width-overflow contract as the integer ops: the literal must fit
     # (signed range accepted), else MathError — not a generic OverflowError.
     _checked_mask(value, width)

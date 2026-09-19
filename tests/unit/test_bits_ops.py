@@ -175,6 +175,26 @@ class TestFloatBits:
         got = bits_ops.bits("bits-to-float", ["0x3ff0000000000000"], width=64)
         assert got == pytest.approx(1.0)
 
+    @pytest.mark.parametrize("value", ["0x3c00", "0x3fc0", "0xfc00"])
+    def test_bits_to_float_width16_typed_error(self, value: str) -> None:
+        # GitHub issue #2 (vera gate): width 16 must be a typed, actionable
+        # error, never "MathError: internal computation failure" (struct.error
+        # leak). Chosen taxonomy: ArgumentError — an unsupported --width for
+        # the operation, same family as an unknown CRC variant. IEEE-754
+        # binary formats are 32/64 bits only; half-precision is not offered
+        # in v1 (documented in README/SKILL).
+        with pytest.raises(ArgumentError, match="16 is not an IEEE-754 binary format"):
+            bits_ops.bits("bits-to-float", [value], width=16)
+
+    @pytest.mark.parametrize("width", [8, 16])
+    def test_float_ops_reject_non_ieee754_widths(self, width: int) -> None:
+        # sibling path: float-to-bits must not silently render a 32-bit
+        # pattern for width 16 (it returned 3f800000 before this fix)
+        with pytest.raises(ArgumentError, match="requires --width 32 or 64"):
+            bits_ops.bits("float-to-bits", ["1.0"], width=width)
+        with pytest.raises(ArgumentError, match="requires --width 32 or 64"):
+            bits_ops.bits("bits-to-float", ["1"], width=width)
+
 
 class TestEndian:
     def test_swap(self) -> None:

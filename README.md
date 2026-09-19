@@ -163,6 +163,9 @@ calc bits and 0xF0 0x3C --width 8 --format hex   # 30
 Operations: `and or xor not shl shr sar rol ror popcount clz ctz
 to-signed to-unsigned float-to-bits bits-to-float`.
 
+`float-to-bits` / `bits-to-float` require `--width 32` or `--width 64`
+(IEEE-754 binary32/binary64); other widths are an `ArgumentError`.
+
 ### endian — byte-order conversions
 
 Separate from `bits` by design: endianness converts between values and byte
