@@ -190,7 +190,9 @@ class _Kumaraswamy:
         out = []
         for m in moments:
             if m == "s":
-                out.append(self._central_moment(3))
+                # scipy contract: standardized skewness mu3/sigma^3 (not the raw
+                # third central moment).
+                out.append(self._central_moment(3) / self.var() ** 1.5)
             elif m == "k":
                 out.append(self._central_moment(4) / self.var() ** 2 - 3.0)
             elif m == "m":
@@ -343,6 +345,11 @@ def distribution_command(args: types.SimpleNamespace) -> str | float | list[floa
     if op in ("mean", "variance", "stddev", "skewness", "kurtosis", "excess-kurtosis"):
         moment = "kurtosis" if op == "excess-kurtosis" else op
         dist = _scipy_dist(params)
+        # Spec (R6): moments that do NOT exist are MathError: moment undefined.
+        # t mean is undefined for df <= 1 (Cauchy, not +inf); t variance for
+        # 1 < df <= 2 is infinite by definition and renders inf.
+        if params.family == "t" and moment == "mean" and params.get("df") <= 1:
+            raise MathError("moment undefined")
         value = _moment(dist, moment)
         if math.isnan(value):
             raise MathError("moment undefined")

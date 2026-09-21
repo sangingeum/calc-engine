@@ -190,6 +190,31 @@ def test_r6_kumaraswamy_moments():
     assert var == pytest.approx(0.048889, abs=5e-5)
 
 
+def test_r6_kumaraswamy_skewness_standardized():
+    """Solomon fix-round: stats('s') must be STANDARDIZED skewness mu3/sigma^3.
+
+    Pinned against exact sympy integration and closed-form raw moments
+    (agreement verified in review): -0.1253034159 for a=2, b=2. The
+    pre-fix code returned the raw third central moment (-0.0013544974).
+    """
+    import types
+
+    from calc.ops import distribution_ops
+
+    args = types.SimpleNamespace(
+        op="skewness", family="kumaraswamy", value=None, family2=None,
+        alpha=None, beta=None, low=None, high=None, mu=None, sigma=None,
+        lam=None, scale=None, shape=None, n=None, p=None, df=None, a=2, b=2,
+    )
+    value = distribution_ops.distribution_command(args)
+    assert value == pytest.approx(-0.1253034159, abs=5e-10)
+    # kurtosis path was already correct; keep it pinned here too
+    args.op = "kurtosis"
+    assert distribution_ops.distribution_command(args) == pytest.approx(
+        2.1800472255, abs=5e-10
+    )
+
+
 def test_r6_ppf_cdf_roundtrip_new_families():
     import types
 
@@ -245,8 +270,12 @@ def test_r6_t_moment_undefined_and_infinite():
 
     with pytest.raises(MathError):
         distribution_ops.distribution_command(make("mean", 0))
-    mean = distribution_ops.distribution_command(make("mean", 1))
-    assert math.isinf(mean)  # infinite by definition (df <= 1): renders inf
+    with pytest.raises(MathError):
+        distribution_ops.distribution_command(make("mean", 1))
+    with pytest.raises(MathError):
+        distribution_ops.distribution_command(make("mean", 0.5))
+    var = distribution_ops.distribution_command(make("variance", 1.5))
+    assert math.isinf(var)  # infinite by definition (1 < df <= 2): renders inf
 
 
 def test_r6_sample_seeded_pinned():

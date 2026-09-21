@@ -462,7 +462,14 @@ def _parse_dynamic_kwargs(tokens: Sequence[str]) -> dict[str, float]:
 def _subparser_option_map(
     parser: argparse.ArgumentParser,
 ) -> dict[tuple[str, str], argparse.Action]:
-    """Map each subcommand's option strings to their actions (R2 preprocessing)."""
+    """Map each subcommand's option strings to their actions (R2 preprocessing).
+
+    NOTE: this reaches into argparse's private ``parser._actions`` /
+    ``_SubParsersAction.choices`` to enumerate registered options. There is no
+    public API for it; this is a deliberate, isolated dependency reviewed
+    against the pinned Python/argparse version (3.11/3.12) — re-verify on any
+    interpreter upgrade.
+    """
     subactions = [
         a for a in parser._actions if isinstance(a, argparse._SubParsersAction)
     ]
@@ -483,11 +490,15 @@ def _normalize_positionals(
 
     argv[0] must be the subcommand (argparse requires it). Tokens after it are
     split into options (matched against the subparser's registered option
-    strings, consuming one value for value-taking options) and positionals
+    strings, consuming one value for value-taking options; glued
+    ``--opt=value`` forms are split on the first ``=``) and positionals
     (everything else, including ``-2+5``, ``-abc``, ``@file``). Rebuild as
     ``<subcmd> <options...> -- <positionals...>``; a user ``--`` forces the
     remainder positional verbatim. If everything is already option-first with
     no leading-dash positional, argv is returned unchanged.
+
+    Like ``_subparser_option_map``, this depends on the option map built from
+    argparse's private ``_actions`` (see the note there).
     """
     if not argv or argv[0] not in {c for (c, _) in option_map}:
         return argv
@@ -504,15 +515,25 @@ def _normalize_positionals(
             saw_double_dash = True
             positionals.extend(tokens[i + 1 :])
             break
-        action = option_map.get((cmd, token)) if not saw_double_dash else None
+        action = None
+        glued = False
+        if not saw_double_dash:
+            action = option_map.get((cmd, token))
+            if action is None and token.startswith("--") and "=" in token:
+                # glued form --opt=value: classify by the option name only;
+                # the token (name=value) passes through unchanged.
+                name = token.split("=", 1)[0]
+                action = option_map.get((cmd, name))
+                glued = action is not None
         if action is not None:
             options.append(token)
-            takes_value = action.nargs is None and not isinstance(
-                action, argparse._StoreConstAction
-            )
-            if takes_value and i + 1 < len(tokens):
-                options.append(tokens[i + 1])
-                i += 1
+            if not glued:
+                takes_value = action.nargs is None and not isinstance(
+                    action, argparse._StoreConstAction
+                )
+                if takes_value and i + 1 < len(tokens):
+                    options.append(tokens[i + 1])
+                    i += 1
             i += 1
             continue
         # positional: leading-dash non-options are the R2 hazard
@@ -580,6 +601,7 @@ def _handlers() -> dict:
             urlsafe=a.urlsafe,
             output_format=a.output,
             raw_bytes=_resolved_bytes(a.data, a.max_input_bytes),
+            source_path=_source_path(a.data),
         ),
         "datetime": lambda a: _datetime_handler(a),
         "regex": lambda a: _regex_handler(a),
@@ -588,6 +610,13 @@ def _handlers() -> dict:
         "gof": lambda a: gof_ops.gof_command(a),
         "sym": lambda a: sym_ops.sym_command(a),
     }
+
+
+def _source_path(token: str) -> str | None:
+    """The file path behind a ``@<path>`` token, else None (error messages)."""
+    if token.startswith("@") and token != "@-":
+        return token[1:]
+    return None
 
 
 def _resolved_bytes(token: str, max_input_bytes: int | None) -> bytes | None:
@@ -739,6 +768,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.kwargs = physics_kwargs
         _resolve_cli_inputs(args)
         result = _handlers()[args.command](args)
+        # Rendering/printing sit INSIDE the defensive handler: a render failure
+        # (e.g. the CPython int→str limit on a huge --exact Fraction) must
+        # still emit exactly one typed stderr line (INV-2), never a traceback.
+        print(render(result, args.precision))
     except CalcError as exc:
         print(f"{type(exc).prefix}: {exc}", file=sys.stderr)
         return 1
@@ -748,9 +781,5 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     except Exception:  # noqa: BLE001 — defensive: never leak a traceback to stdout
         print("MathError: internal computation failure", file=sys.stderr)
-        return 1
-    try:
-        print(render(result, args.precision))
-    except BrokenPipeError:
         return 1
     return 0

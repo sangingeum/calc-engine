@@ -97,6 +97,39 @@ def test_r2_leading_dash_positionals(args: list[str], expected: str) -> None:
     assert proc.stdout == expected + "\n", (args, proc.stdout)
 
 
+def test_r2_glued_option_form_regression():
+    """Solomon fix-round: --opt=value must still parse (baseline 5206a52 did)."""
+    proc = run_calc("eval", "2+2", "--precision=6")
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == "4\n"  # int renders bare regardless of precision
+    proc = run_calc("eval", "1/3", "--precision=6")
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == "0.333333\n"
+    proc = run_calc("eval", "-0.5-1.5", "--precision=1")
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == "-2.0\n"
+
+
+def test_inv2_huge_exact_result_one_typed_line():
+    """Solomon fix-round: render failures must stay inside the INV-2 handler."""
+    proc = run_calc("eval", "2**10000000", "--exact")
+    assert proc.returncode == 1
+    assert proc.stdout == ""
+    assert proc.stderr.count("\n") == 1, proc.stderr
+    assert proc.stderr.startswith("MathError: "), proc.stderr
+
+
+def test_r3_base64_decode_non_utf8_file_typed_error(tmp_path):
+    """Solomon fix-round: non-UTF-8 @file on decode -> typed ArgumentError."""
+    f = tmp_path / "bad.b64"
+    f.write_bytes(b"\xff\xfe\x00")
+    proc = run_calc("base64", "decode", f"@{f}")
+    assert proc.returncode == 1
+    assert proc.stdout == ""
+    assert proc.stderr.startswith(f"ArgumentError: cannot read file '{f}'"), proc.stderr
+    assert proc.stderr.count("\n") == 1
+
+
 def test_r2_hash_leading_dash():
     proc = run_calc("hash", "sha256", "-abc")
     assert proc.returncode == 0, proc.stderr
@@ -191,7 +224,7 @@ def test_r3_inv7_no_fs_access_in_ops():
     ops_dir = Path(__file__).resolve().parents[2] / "src" / "calc" / "ops"
     assert ops_dir.is_dir()
     banned = ("from pathlib", "import pathlib", "open(")
-    for py in ops_dir.glob("*.py"):
+    for py in ops_dir.rglob("*.py"):  # recursive: nested packages stay guarded
         text = py.read_text(encoding="utf-8")
         for needle in banned:
             assert needle not in text, f"{py.name} contains {needle!r}"

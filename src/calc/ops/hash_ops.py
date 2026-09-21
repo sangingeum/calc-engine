@@ -157,6 +157,7 @@ def base64_code(
     urlsafe: bool = False,
     output_format: str | None = None,
     raw_bytes: bytes | None = None,
+    source_path: str | None = None,
 ) -> str:
     """Base64 encode/decode; decode output is UTF-8 text or hex with --output hex."""
     if op not in ("encode", "decode"):
@@ -171,8 +172,15 @@ def base64_code(
     if output_format not in (None, _HEX):
         raise ArgumentError(f"unknown output format: {output_format!r} (expected hex)")
     if raw_bytes is not None:
-        # @file input on decode: the file holds the base64 text.
-        data = raw_bytes.decode("utf-8", errors="strict")
+        # @file input on decode: the file holds the base64 text. Non-UTF-8
+        # file bytes surface as a typed ArgumentError naming the source.
+        try:
+            data = raw_bytes.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            name = source_path if source_path is not None else repr(data)
+            raise ArgumentError(
+                f"cannot read file '{name}': file is not valid UTF-8 ({exc})"
+            ) from None
     # Strict validation for both alphabets: stdlib decoders silently ignore
     # invalid characters by default, which would break the SyntaxError contract.
     if urlsafe:
