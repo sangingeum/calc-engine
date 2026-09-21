@@ -92,7 +92,12 @@ _IDENT_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z_0-9]*$")
 
 
 def _parse_let_bindings(bindings: list[str] | None) -> dict[str, float]:
-    """Parse ``NAME=NUMBER`` pairs; numeric literals only (safe-eval model)."""
+    """Parse ``NAME=NUMBER`` pairs; numeric literals only (safe-eval model).
+
+    Integer-looking literals (no ``.``/``e``/``E`` exponent) bind as ``int``
+    (issue 8) so integer-valued expressions render bare; everything else is
+    ``float``.
+    """
     names: dict[str, float] = {}
     if not bindings:
         return names
@@ -117,7 +122,13 @@ def _parse_let_bindings(bindings: list[str] | None) -> dict[str, float]:
             raise ArgumentError(f"--let value must be finite: {value!r}")
         if name in names:
             raise ArgumentError(f"duplicate --let name: {name!r}")
-        names[name] = parsed
+        # Integer-looking literals bind as int (issue 8): 2 -> int, -3 -> int,
+        # 2.5 / 2.0 / 2e0 stay float so the renderer keeps decimals.
+        stripped = value.strip()
+        is_int_literal = not any(c in stripped for c in ".eE") and (
+            stripped.lstrip("+-").isdigit()
+        )
+        names[name] = int(parsed) if is_int_literal else parsed
     return names
 
 

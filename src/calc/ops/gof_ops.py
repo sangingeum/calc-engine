@@ -105,7 +105,7 @@ def _check_field(args: types.SimpleNamespace, allowed: tuple[str, ...]) -> str:
     return field
 
 
-def gof_command(args: types.SimpleNamespace) -> float:
+def gof_command(args: types.SimpleNamespace) -> int | float:
     """Dispatch the ``gof`` subcommand."""
     op = args.op
     if op == "ks":
@@ -146,7 +146,7 @@ def _gof_chi2(args: types.SimpleNamespace) -> float:
         return float(statistic)
     if field == "p":
         return float(pvalue)
-    return float(len(observed) - 1 - args.gof_ddof)
+    return len(observed) - 1 - args.gof_ddof  # df: integer by nature (issue 8)
 
 
 def _gof_chi2_bins(args: types.SimpleNamespace) -> float:
@@ -177,4 +177,4 @@ def _gof_chi2_bins(args: types.SimpleNamespace) -> float:
         return float(statistic)
     if field == "p":
         return float(pvalue)
-    return float(k - 1 - args.gof_ddof)
+    return k - 1 - args.gof_ddof  # df: integer by nature (issue 8)

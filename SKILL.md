@@ -60,6 +60,9 @@ calc eval "comb(5,2)"                        # 10
 **Variables with `--let`** (repeatable): `calc eval "a*b" --let a=2 --let b=3`
 → `6`. Numeric literals only; names must be valid identifiers and must not
 shadow functions/constants (`--let sqrt=2` is an `ArgumentError`).
+Integer-looking literals (`2`, `-3`) bind as integers; `2.5`, `2.0`, `2e0`
+bind as floats — results computed from integer bindings render bare
+(`3`, not `3.0000`).
 
 **Exact rational arithmetic `--exact`**: evaluates with `fractions.Fraction`
 (decimal literals parsed exactly) and prints an integer or `p/q` in lowest
@@ -185,6 +188,7 @@ calc stat spearman "[1,2,3,4,5,6,7,8]" "[2,1,4,3,6,5,8,7]" --field p   # 0.0020
 #   p-value method (pinned): t = r*sqrt((n-2)/(1-r^2)), df = n-2; Spearman =
 #   average-rank Pearson with the same t-approximation (scipy convention).
 #   |r| = 1 => p = 0; n < 3 => MathError. These are population moments.
+#   --field df and --field n are integers by nature and render bare (6, 8).
 calc stat critical-r --n 240 --alpha 0.05     # 0.1267 — smallest |r| significant at alpha
 #   r_crit = t_crit/sqrt(n-2+t_crit^2); two-sided uses the 1-alpha/2 t quantile.
 calc stat regression "[0,1,2,3]" "[1,3,5,7]" --field slope   # 2.0000

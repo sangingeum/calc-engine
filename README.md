@@ -63,6 +63,8 @@ Conventions (all pinned by tests):
 
 - `covariance`: population by default; `--ddof 1` divides by n-1.
 - `spearman`/`rank`: average ranks for ties (1-based), deterministic.
+- `pearson`/`spearman` `--field df|n`: integers by nature, render bare
+  (`6`, `8` — not `6.0000`); same for `gof chi2|chi2-bins --field df`.
 - `regression`: OLS on (X, Y). `--field` one of `slope, intercept, r2,
   stderr, slope_stderr, residual_stderr, residual_variance`. `stderr` is an
   explicit alias of `slope_stderr`; `residual_stderr` =

@@ -251,7 +251,7 @@ _ALTERNATIVES = ("two-sided", "greater", "less")
 
 def _correlation_with_significance(
     kind: str, x: str, y: str, field: str | None, alternative: str
-) -> float:
+) -> int | float:
     """pearson/spearman with optional --field selector (R4).
 
     Default field is ``coefficient`` (byte-identical legacy output, INV-4).
@@ -277,9 +277,9 @@ def _correlation_with_significance(
         xs, _ = _parse_pair(x, y)
     n = len(xs)
     if field == "n":
-        return float(n)
+        return n  # integer by nature (issue 8): renders bare
     if field == "df":
-        return float(n - 2)
+        return n - 2  # integer by nature (issue 8): renders bare
     if field == "coefficient":
         return r
     if n < 3:
