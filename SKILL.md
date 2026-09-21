@@ -408,6 +408,8 @@ Applies to: JSON dataset arguments of `stat`, `matrix`, `vector`, `gof`, and
 `base64` (read as RAW bytes — no decoding, no newline stripping; `base64
 decode` re-encodes as text). Read-only; regular files only; default cap
 16 MiB, override with `--max-input-bytes N`. Only one `@-` per invocation.
+`--input hex` combined with `@file`: **the `@file` raw bytes take precedence**
+(the file's bytes are hashed as-is, not parsed as hex).
 
 ```bash
 printf '[1,2,3,4]' | calc stat mean @-      # 2.5000

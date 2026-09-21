@@ -65,3 +65,25 @@ Appendix B defects B1-B6: all closed with regression tests.
 - Coverage percentage should be re-measured with the DESIGN.md 6a recipe.
 - R4 optional Fisher-z CI fields (`ci_lower`/`ci_upper`, P2) were not implemented (spec-optional).
 - `sym equiv` may return `MathError: undecided` for provable-but-hard identities where sympy's `is_zero` is unknown and the grid is uninformative — this is the spec-mandated behavior but callers should be aware.
+
+---
+
+## Fix round (solomon review REVIEW-CALC-V2-SOLOMON.md, changes-requested)
+
+All 11 original judgment calls were ACCEPTED. Disposition of the review findings:
+
+| # | Finding | Disposition |
+|---|---|---|
+| 1 | [blocking] kumaraswamy skewness returned the raw third central moment, not standardized mu3/sigma^3 | FIXED: `_Kumaraswamy.stats('s')` now returns `_central_moment(3)/var()**1.5`. Live: `-0.1253034159` (a=2,b=2); kurtosis path re-pinned `2.1800472255`. New test `test_r6_kumaraswamy_skewness_standardized` pins both literals. |
+| 2 | `--opt=value` glued form regressed for eval (R2 preprocessing classified it as a positional) | FIXED: `_normalize_positionals` now classifies glued tokens by the option name (split on first `=`), passing the token through unchanged. Regression tests: `eval "2+2" --precision=6` → `4`, `eval "1/3" --precision=6` → `0.333333`, `eval "-0.5-1.5" --precision=1` → `-2.0`. |
+| 3 | INV-2 breach: `eval "2**10000000" --exact` leaked a 14-line traceback from `render()` outside the defensive handler | FIXED: `print(render(...))` moved INSIDE the `try` in `cli.main`; render failures emit exactly one typed `MathError:` line, exit 1. Regression test `test_inv2_huge_exact_result_one_typed_line`. |
+| 4 | t mean df ≤ 1 rendered `inf`; spec mandates `MathError: moment undefined` | FIXED: mean t with df ≤ 1 raises `MathError: moment undefined` (Cauchy mean undefined, not +inf); variance for 1 < df ≤ 2 still renders `inf` (infinite by definition). Test updated (df 0/0.5/1 → MathError; df 1.5 variance → inf). SKILL.md line already stated df ≤ 1 → undefined — confirmed accurate, no doc change needed. |
+| 5 | `base64 decode @file` non-UTF-8 surfaced as generic internal-failure | FIXED: decode route now raises `ArgumentError: cannot read file '<path>': file is not valid UTF-8 (...)` naming the file (cli passes `_source_path`). Regression test added. |
+| 6 | `--input hex` + `@file` interaction undocumented | DOCUMENTED (choice: precedence, not rejection): SKILL.md input-resolver section now states `@file` raw bytes take precedence over `--input hex`. |
+| 7 | INV-7 static guard only globbed top level | FIXED: guard now uses `rglob("*.py")` so nested packages stay covered. |
+| 8 | argparse private-API (`_actions`) dependency undocumented | DOCUMENTED: NOTE added to `_subparser_option_map` (deliberate, isolated dependency on `parser._actions`/`_SubParsersAction.choices`; no public alternative; re-verify on interpreter upgrade) plus a cross-reference on `_normalize_positionals`. |
+
+Post-fix verification: full fresh `uv run pytest -q` → **531 passed, 0 failed**
+(527 + 4 new: kumaraswamy skewness pin, glued-option regression, INV-2
+one-line regression, base64 non-UTF-8 typed error). ruff clean, mypy clean
+(26 files), pip-audit clean.
