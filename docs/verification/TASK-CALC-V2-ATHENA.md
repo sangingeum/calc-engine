@@ -98,3 +98,16 @@ one-line regression, base64 non-UTF-8 typed error). ruff clean, mypy clean
 
 Post-fix verification: full fresh `uv run pytest -q` → **532 passed, 0 failed**
 (531 + 1 new F1 regression test). ruff clean, mypy clean (26 files).
+
+---
+
+## Fix round 3 (GitHub issues 3 and 4)
+
+| Issue | Finding | Disposition |
+|---|---|---|
+| #3 (blocking) | `gof ks` on kumaraswamy → `MathError: internal computation failure`; `_Kumaraswamy.cdf/pdf/sf` were scalar-only and raised `ValueError: ambiguous truth value` when `sps.kstest` passed a numpy array (`ppf` was already array-safe, which is why `chi2-bins` worked) | FIXED: `_Kumaraswamy.cdf/pdf/sf` vectorized via `np.where` on `np.asarray` input (scalar in → scalar out preserved). Verified against (a) `scipy.stats.kstest(data, k.cdf)` on the same closed-form CDF — statistic 0.2390582857, p 0.7390716151 — and (b) a manual closed-form KS computation with F(x) = 1−(1−x^a)^b, D = 0.2390582857; all three agree. t/chi2 ks paths re-pinned against scipy. Regression tests: 6 new in `tests/unit/test_issue3_issue4.py` (array acceptance, support boundaries, sf=1−cdf, pinned ks statistic/p for a=2,b=3 and the issue's a=2,b=2 repro, t/chi2 vectorized cross-checks). Closed with commit SHA below. |
+| #4 (not a bug) | anna reported ks p = 0.0087 vs expected ~0.667 on the seed-20260921 beta(2,2) n=200 stream | CLOSED as not-a-bug after independent cross-check: scipy.stats.kstest on the exact stream `np.random.default_rng(20260921).beta(2,2,200)` gives D = 0.050856, p = 0.659855; calc on the unrounded stream gives 0.6599 (agreement); calc on the 4-decimal-rounded stream gives 0.6590, matching scipy on the same rounded input (0.658999). The reported 0.0087 is not reproducible on this stream in any rounding and is consistent with an invocation mismatch (wrong family/cdf), agreeing with the butler's 6-stream table (≤ ~1% relative differences). No code change made; regression test `test_issue4_seed_20260921_stream_matches_scipy` pins the stream agreement so a future p-value regression fails loudly. |
+
+Post-fix verification: full fresh `uv run pytest -q` → **538 passed, 0 failed**
+(532 + 6 new issue-3/4 regression tests). ruff clean, mypy clean (26 files),
+pip-audit clean.

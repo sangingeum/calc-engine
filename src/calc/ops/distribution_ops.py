@@ -158,23 +158,40 @@ class _Kumaraswamy:
         self.a = a
         self.b = b
 
-    def pdf(self, x: float) -> float:
-        if x <= 0 or x >= 1:
-            return 0.0
-        return self.a * self.b * x ** (self.a - 1) * (1 - x**self.a) ** (self.b - 1)
+    def pdf(self, x: Any) -> Any:
+        # Vector-safe: kstest/histogram paths pass numpy arrays.
+        x = np.asarray(x, dtype=float)
+        inside = (x > 0) & (x < 1)
+        pdf_vals = np.where(
+            inside,
+            self.a * self.b * x ** (self.a - 1) * (1.0 - x**self.a) ** (self.b - 1),
+            0.0,
+        )
+        return pdf_vals if pdf_vals.ndim else float(pdf_vals)
 
-    def cdf(self, x: float) -> float:
-        if x <= 0:
-            return 0.0
-        if x >= 1:
-            return 1.0
-        return 1.0 - (1.0 - x**self.a) ** self.b
+    def cdf(self, x: Any) -> Any:
+        # F(x) = 1 - (1 - x^a)^b on (0,1); vector-safe for kstest.
+        x = np.asarray(x, dtype=float)
+        cdf_vals = np.where(
+            x <= 0,
+            0.0,
+            np.where(x >= 1, 1.0, 1.0 - (1.0 - x**self.a) ** self.b),
+        )
+        return cdf_vals if cdf_vals.ndim else float(cdf_vals)
 
-    def ppf(self, q: float) -> float:
-        return (1.0 - (1.0 - q) ** (1.0 / self.b)) ** (1.0 / self.a)
+    def ppf(self, q: Any) -> Any:
+        return (1.0 - (1.0 - np.asarray(q, dtype=float)) ** (1.0 / self.b)) ** (
+            1.0 / self.a
+        )
 
-    def sf(self, x: float) -> float:
-        return 1.0 - self.cdf(x)
+    def sf(self, x: Any) -> Any:
+        x = np.asarray(x, dtype=float)
+        sf_vals = np.where(
+            x <= 0,
+            1.0,
+            np.where(x >= 1, 0.0, (1.0 - x**self.a) ** self.b),
+        )
+        return sf_vals if sf_vals.ndim else float(sf_vals)
 
     def mean(self) -> float:
         return self._raw_moment(1)
