@@ -1,6 +1,6 @@
 ---
 name: calc-engine
-description: Deterministic `calc` CLI math engine for AI agents — zero-chat stdout, typed stderr errors, 19 subcommands (eval, stat, finance, matrix, convert-base, convert-unit, calculus, physics-constant, physics, vector, bits, endian, hash, crc, base64, datetime, regex, distribution, assert). Use whenever an agent needs safe computation or statistical/probabilistic verification offloaded to a subprocess.
+description: Deterministic `calc` CLI math engine for AI agents — zero-chat stdout, typed stderr errors, 21 subcommands (eval, stat, finance, matrix, convert-base, convert-unit, calculus, physics-constant, physics, vector, bits, endian, hash, crc, base64, datetime, regex, distribution, assert, gof, sym). Use whenever an agent needs safe computation or statistical/probabilistic verification offloaded to a subprocess.
 ---
 
 # calc — CLI math engine for agents
@@ -29,7 +29,7 @@ Safe evaluation via `simpleeval` (no Python `eval`/`exec`). Standard
 arithmetic operators (`+ - * / // % **`), comparison (`< <= > >= == !=`),
 and boolean (`and or not`) operators all work.
 
-**Functions — the exhaustive list (30):**
+**Functions — the exhaustive list (40):**
 
 | Category | Functions |
 |---|---|
@@ -38,9 +38,10 @@ and boolean (`and or not`) operators all work.
 | hyperbolic | `sinh`, `cosh`, `tanh` |
 | logarithms | `log` (natural; `log(x, base)` two-arg), `log2`, `log10`, `log1p` |
 | exponential | `exp`, `expm1` |
-| rounding | `floor`, `ceil`, `trunc`, `fabs` |
-| combinatorics | `factorial`, `gcd`, `lcm` |
-| misc | `hypot`, `degrees`, `radians` |
+| rounding | `floor`, `ceil`, `trunc`, `fabs`, `round` (banker's rounding) |
+| combinatorics | `factorial`, `gcd`, `lcm`, `comb`, `perm` |
+| special | `erf`, `erfc`, `gamma`, `lgamma` |
+| misc | `hypot`, `degrees`, `radians`, `abs`, `min`, `max` |
 
 **Constants — the exhaustive list (3):** `pi`, `tau`, `e`
 
@@ -51,7 +52,22 @@ calc eval "452.12 * (14 / 3.14)"
 calc eval "sqrt(2)" --precision 6            # 1.414214
 calc eval "atan2(1, 1) * 2"                  # 1.5708
 calc eval "factorial(10)"                    # 3628800
+calc eval "erf(1)" --precision 6             # 0.842701
+calc eval "gamma(5)"                         # 24
+calc eval "comb(5,2)"                        # 10
 ```
+
+**Variables with `--let`** (repeatable): `calc eval "a*b" --let a=2 --let b=3`
+→ `6`. Numeric literals only; names must be valid identifiers and must not
+shadow functions/constants (`--let sqrt=2` is an `ArgumentError`).
+
+**Exact rational arithmetic `--exact`**: evaluates with `fractions.Fraction`
+(decimal literals parsed exactly) and prints an integer or `p/q` in lowest
+terms: `calc eval "-0.35*(1+0.5*(0.5-0.25)*2)" --exact` → `-7/16`. Allowed:
+`+ - * / // % **`, integer-valued exponents only, parentheses, numeric
+literals. Functions/names are not allowed; anything not exactly representable
+is a `MathError: result not exactly representable`. `--exact` with
+`--precision` is an `ArgumentError`.
 
 ---
 
@@ -161,6 +177,16 @@ calc stat covariance "[1,2,3]" "[2,4,6]"      # 1.3333 — population cov (ddof=
 calc stat pearson "[1,2,3]" "[2,4,6]"         # 1.0000 — Pearson r; zero variance -> MathError
 calc stat spearman "[1,2,3]" "[30,10,20]"     # -0.5000 — average ranks for ties
 calc stat rank "[30,10,20]"                   # [3.0000,1.0000,2.0000] — 1-based average ranks
+calc stat skewness "[1,2,3,4,10]"             # 1.1384 — population (biased) standardized moment
+calc stat kurtosis "[1,2,3,4,10]"             # 2.7880 — population, NON-excess (normal = 3)
+calc stat excess-kurtosis "[1,2,3,4,10]"      # -0.2120
+calc stat spearman "[1,2,3,4,5,6,7,8]" "[2,1,4,3,6,5,8,7]" --field p   # 0.0020
+#   pearson/spearman --field: coefficient|p|t|df|n; --alternative two-sided|greater|less
+#   p-value method (pinned): t = r*sqrt((n-2)/(1-r^2)), df = n-2; Spearman =
+#   average-rank Pearson with the same t-approximation (scipy convention).
+#   |r| = 1 => p = 0; n < 3 => MathError. These are population moments.
+calc stat critical-r --n 240 --alpha 0.05     # 0.1267 — smallest |r| significant at alpha
+#   r_crit = t_crit/sqrt(n-2+t_crit^2); two-sided uses the 1-alpha/2 t quantile.
 calc stat regression "[0,1,2,3]" "[1,3,5,7]" --field slope   # 2.0000
 #   --field: slope|intercept|r2|stderr|slope_stderr|residual_stderr|residual_variance
 #   stderr IS slope_stderr (explicit alias); residual_stderr = sqrt(SSR/(n-2)); residual_variance = SSR/(n-2)
@@ -247,7 +273,8 @@ unknown or ambiguous targets are `ArgumentError`.
 
 ## distribution — probability distributions (verification backend)
 
-Eight families; parameters are always **named flags**:
+Eleven families; parameters are always **named flags** (abbreviations are
+disabled on this subcommand — exact flags only):
 
 | family | flags | parameterization / constraints |
 |---|---|---|
@@ -259,6 +286,13 @@ Eight families; parameters are always **named flags**:
 | `gamma` | `--shape --scale` | both > 0 |
 | `binomial` | `--n --p` | n non-negative INTEGER, 0 ≤ p ≤ 1 |
 | `poisson` | `--lam` | lam > 0 |
+| `t` | `--df` | Student's t (standard); df > 0 |
+| `chi2` | `--df` | df > 0 |
+| `kumaraswamy` | `--a --b` | a > 0, b > 0; closed-form CDF/PPF; sample via inverse-CDF on the PCG64 uniform stream |
+
+Moments that do not exist (t mean for df ≤ 1) are `MathError: moment
+undefined`; moments that are infinite by definition (t variance for
+1 < df ≤ 2) render `inf` — never `nan`.
 
 Operations (one value per stdout line, byte-exact):
 
@@ -285,8 +319,13 @@ Definitions and conventions (pinned by tests):
 - **kurtosis** = fourth standardized moment, NON-excess (normal = 3);
   `excess-kurtosis` = kurtosis − 3.
 - **sample determinism**: numpy PCG64 (`np.random.default_rng(seed)`,
-  numpy ≥1.26,<2). `--seed` is REQUIRED; no implicit time source; the same
-  seed reproduces the same stream across runs and environments.
+  numpy 1.26.4 / scipy 1.17.1 pinned in `uv.lock`). `--seed` is REQUIRED; no
+  implicit time source; the same seed reproduces the same stream across runs
+  and environments. It is NOT expected to match another language/runtime's RNG
+  stream — it is for "does theory predict this?" checks, not bit-exact replay.
+- **sf**: survival function P(X > x) computed via the library's survival
+  function (NOT `1 − cdf`) so extreme tail probabilities keep precision:
+  `calc distribution sf normal 8 --mu 0 --sigma 1` → `6.221e-16`.
 - **validate** prints `true` on valid parameters; invalid parameters fail
   with a typed `MathError` (e.g. `uniform requires low < high`). Missing
   required parameters are `ArgumentError`.
@@ -297,6 +336,87 @@ Definitions and conventions (pinned by tests):
 - `ppf` requires q ∈ [0,1] (else `MathError`); `ppf(0)` on continuous
   families renders `-inf`.
 - `cdf(ppf(p)) ≈ p` holds for representative probabilities (tested roundtrip).
+- **fit**: closed-form moment matching, `calc distribution fit <family>
+  --mean M --variance V --field <param>` (one fitted parameter per call).
+  Supported families: `beta` (c = M(1−M)/V − 1; alpha = M·c, beta = (1−M)·c;
+  requires 0<M<1, 0<V<M(1−M)), `gamma` (shape = M²/V, scale = V/M),
+  `normal` (mu = M, sigma = √V), `lognormal` (sigma² = ln(1+V/M²),
+  mu = ln M − sigma²/2), `uniform` (M ∓ √(3V)). Infeasible targets are
+  `MathError`; `kumaraswamy` and other families are `ArgumentError`.
+```
+
+## gof — goodness-of-fit tests (verification backend)
+
+`--field` is REQUIRED for every op (omitting it is an `ArgumentError`):
+`statistic` or `p` (all ops), plus `df` for `chi2`/`chi2-bins`.
+
+```bash
+calc gof ks DATA FAMILY [family flags] --field statistic|p
+calc gof chi2 OBSERVED EXPECTED [--ddof N] --field statistic|p|df
+calc gof chi2-bins DATA FAMILY [family flags] --bins K [--ddof N] --field statistic|p|df
+```
+
+- **ks**: one-sample two-sided Kolmogorov–Smirnov test against the family's
+  CDF, identical to `scipy.stats.kstest(data, cdf, method='auto')` (pinned
+  convention). Continuous families only (`uniform beta normal lognormal
+  exponential gamma t chi2 kumaraswamy`); `binomial`/`poisson` are
+  `ArgumentError`.
+- **chi2**: OBSERVED/EXPECTED are JSON arrays of counts of equal length; sums
+  must match (else `MathError`); `df = k − 1 − ddof`.
+- **chi2-bins**: K equiprobable bins from the family's PPF at i/K; expected
+  count n/K per bin; data outside the family's support ⇒ `MathError` (no
+  silent clipping); requires n/K ≥ 5 else `MathError: expected count per bin
+  < 5`; `df = K − 1 − ddof`.
+- DATA/OBSERVED/EXPECTED accept `@file` / `@-` (see Input resolver).
+
+```bash
+calc gof ks "[0.05,0.2,0.35,0.5,0.65,0.8,0.95]" uniform --low 0 --high 1 --field statistic
+                                             # 0.0929
+calc gof chi2 "[18,22,20,20]" "[20,20,20,20]" --field p   # 0.9402
+```
+
+## sym — symbolic equivalence / simplify / expand (real domain)
+
+Symbols must be declared with `--var` (undeclared ⇒ `SyntaxError`). Decimal
+literals are parsed as EXACT rationals (0.35 → 7/20) so identities with
+decimal coefficients hold exactly.
+
+- `sym equiv EXPR1 EXPR2 --var A ...` prints `true` iff simplify(E1−E2) = 0;
+  `false` iff provably non-zero (non-zero constant, or differs by > 1e-9 at
+  any point of the fixed rational test grid {1/2, −1/3, 7/5, 3, −2, 11/13,
+  1/100}); otherwise `MathError: undecided`. No randomness.
+- `sym simplify EXPR` / `sym expand EXPR` print the sympy-style string.
+
+```bash
+calc sym equiv "-0.35*(1+0.5*(0.5-A)*2)" "-0.525+0.35*A" --var A   # true
+calc sym equiv "(x+1)**2" "x**2+1" --var x                          # false
+calc sym expand "(x+1)**2" --var x                                  # x**2 + 2*x + 1
+```
+
+## Input resolver: `@file`, `@-`, `@@escape` (applies to data positionals)
+
+Every positional that carries data or text accepts:
+
+| token | meaning |
+|---|---|
+| `@<path>` | read the file at `<path>` |
+| `@-` | read all of stdin |
+| `@@<text>` | literal text `@<text>` (escape) |
+
+Applies to: JSON dataset arguments of `stat`, `matrix`, `vector`, `gof`, and
+`sym` expressions; text arguments of `regex`; data argument of `hash`, `crc`,
+`base64` (read as RAW bytes — no decoding, no newline stripping; `base64
+decode` re-encodes as text). Read-only; regular files only; default cap
+16 MiB, override with `--max-input-bytes N`. Only one `@-` per invocation.
+
+```bash
+printf '[1,2,3,4]' | calc stat mean @-      # 2.5000
+calc hash sha256 @fixture.bin               # digest of the file's bytes
+calc hash sha256 @@hello                    # digest of the literal '@hello'
+```
+
+Arguments beginning with `-` (e.g. `calc eval "-2+5"`) work everywhere; the
+`--` separator also still works.
 
 > **Warning: a distribution's mean matching another distribution does not
 > imply variance, tail behavior, modality, or other shape properties are

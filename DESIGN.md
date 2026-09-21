@@ -221,6 +221,55 @@ strings, stronger than goldens.
   catastrophic-backtracking guard. The worker protocol uses a dedicated exit
   code for invalid patterns; the worker never receives or executes arbitrary
   code beyond `re.compile`/match on the passed strings.
+- File/stdin access lives ONLY in `src/calc/input_resolver.py` (the v2 R3
+  input-resolution layer, part of cli.py's routing, not in `calc.ops`). It is
+  read-only, regular files only, size-capped (default 16 MiB,
+  `--max-input-bytes`). A static contract test bans `open(`/`pathlib` and
+  direct `sys.stdin` use under `src/calc/ops/` (the regex worker's payload
+  string is the sole, exact-match carve-out).
+- `--let` bindings accept numeric literals only (safe-eval model preserved);
+  `sym` parses through the restricted `sympy_real` path (never `sympify` on
+  unrestricted input); `--exact` uses a hand-written recursive-descent
+  Fraction parser — no eval/exec anywhere.
+
+## 5b. v2 verification-backend extensions (R1-R12, 2026-09-21)
+
+Design decisions recorded for review:
+
+- **Input resolver (R3).** One function, `resolve_token`, with `binary=True`
+  for hash/crc/base64 (raw bytes) and text (UTF-8) otherwise. `@@` escaping
+  is handled inside the resolver; hash/crc/base64 route `@`-tokens through
+  `cli._resolved_bytes` so `--input hex` semantics stay intact for literal
+  text.
+- **Leading-dash argv (R2).** `_normalize_positionals` classifies post-
+  subcommand tokens as options (matched against the subparser's registered
+  option strings, consuming one value) or positionals, then rebuilds argv as
+  `<subcmd> <options...> -- <positionals...>` only when a leading-dash
+  positional exists — otherwise argv is returned untouched, so all legacy
+  invocations parse byte-identically (INV-4).
+- **Correlation p-values (R4).** Pinned convention: t-approximation,
+  df = n-2, identical to scipy pearsonr/spearmanr; Spearman = average-rank
+  Pearson with the same t-approximation. |r| = 1 → p = 0 exactly.
+- **Kumaraswamy (R6).** Closed-form `_Kumaraswamy` class (scipy has no
+  family): CDF 1−(1−x^a)^b, PPF inverse, raw moments b·B(1+n/a, b); `sample`
+  by inverse-CDF on the PCG64 uniform stream (spec-pinned method; literal
+  pinned in tests). Non-existent moments raise `MathError: moment undefined`;
+  infinite-by-definition moments render `inf` (render.py contract).
+- **sym (R10).** The shared `sympy_real.parse_expression` creates
+  assumptions-free symbols, while `--var` declares `real=True` symbols;
+  `sym_ops` xreplaces the plain symbols with the declared ones so subs work
+  and undeclared symbols are detected by name. Decimals are rewritten to
+  exact `Rational(n,d)` before parsing. The equiv test grid
+  {1/2, −1/3, 7/5, 3, −2, 11/13, 1/100} is fixed and documented (INV-5).
+- **--exact (R11).** Separate tokenizer + recursive-descent parser (not
+  simpleeval) over `fractions.Fraction`; functions/names are hard errors,
+  exponents must be integer-valued. Rendering goes through render.py via a
+  Fraction branch (integer or p/q in lowest terms).
+- **Flag ambiguity (R6/B3).** `allow_abbrev=False` on the `distribution`
+  subparser; verified no existing test relied on abbreviations.
+- **fit (R9).** Closed forms only, one parameter per call (INV-1); dispatch
+  happens before any `_scipy_dist` construction so fit never demands family
+  flags.
 
 ## 6. Spec gaps raised explicitly
 

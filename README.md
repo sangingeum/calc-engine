@@ -378,6 +378,14 @@ An agent should invoke `calc <subcommand> [args]` and:
 - Expression evaluation uses `simpleeval` — Python `eval`/`exec` are never
   invoked; dunder attribute access, `__import__`, and `open` fail.
 - Matrix/vector parsing is strict JSON (`json.loads`), never Python literals.
-- No file I/O, no network, no subprocesses in the computation modules.
-  (Exception: `regex` runs its match in a short-lived subprocess as a
-  catastrophic-backtracking guard — no untrusted code execution either way.)
+- No network, no subprocesses in the computation modules. (Exception: `regex`
+  runs its match in a short-lived subprocess as a catastrophic-backtracking
+  guard — no untrusted code execution either way.)
+- File and stdin access exists ONLY in the CLI input-resolution layer
+  (`src/calc/input_resolver.py`), never in `src/calc/ops/*`. The resolver is
+  read-only, accepts regular files only (directories/globs/URLs rejected),
+  and enforces a size cap (default 16 MiB, `--max-input-bytes N`). A static
+  test asserts that no ops module touches the filesystem or stdin.
+- `--let` bindings accept numeric literals only; `sym` parses through the
+  restricted sympy path (never `sympify` on unrestricted input); no
+  `eval`/`exec` anywhere.
