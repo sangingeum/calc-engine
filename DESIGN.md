@@ -275,7 +275,7 @@ Design decisions recorded for review:
 
 ### 6a. Coverage measurement — sanctioned recipe (R1, 2026-09-21)
 
-The only sanctioned way to measure coverage in this repo is vera's F1 recipe:
+The sanctioned way to measure coverage in this repo is the F1 recipe:
 
 ```sh
 # 1. Config must have parallel = true (pyproject.toml [tool.coverage.run]):

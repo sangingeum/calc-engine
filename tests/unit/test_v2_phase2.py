@@ -191,7 +191,7 @@ def test_r6_kumaraswamy_moments():
 
 
 def test_r6_kumaraswamy_skewness_standardized():
-    """Solomon fix-round: stats('s') must be STANDARDIZED skewness mu3/sigma^3.
+    """Fix round: stats('s') must be STANDARDIZED skewness mu3/sigma^3.
 
     Pinned against exact sympy integration and closed-form raw moments
     (agreement verified in review): -0.1253034159 for a=2, b=2. The

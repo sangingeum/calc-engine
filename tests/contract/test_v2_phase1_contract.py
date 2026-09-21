@@ -98,7 +98,7 @@ def test_r2_leading_dash_positionals(args: list[str], expected: str) -> None:
 
 
 def test_r2_glued_option_form_regression():
-    """Solomon fix-round: --opt=value must still parse (baseline 5206a52 did)."""
+    """Fix round: --opt=value must still parse (baseline 5206a52 did)."""
     proc = run_calc("eval", "2+2", "--precision=6")
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout == "4\n"  # int renders bare regardless of precision
@@ -111,7 +111,7 @@ def test_r2_glued_option_form_regression():
 
 
 def test_inv2_huge_exact_result_one_typed_line():
-    """Solomon fix-round: render failures must stay inside the INV-2 handler."""
+    """Fix round: render failures must stay inside the INV-2 handler."""
     proc = run_calc("eval", "2**10000000", "--exact")
     assert proc.returncode == 1
     assert proc.stdout == ""
@@ -120,7 +120,7 @@ def test_inv2_huge_exact_result_one_typed_line():
 
 
 def test_r11_exact_plus_precision_always_rejected():
-    """Vera F1: --exact + --precision is an ArgumentError regardless of value.
+    """F1 gate: --exact + --precision is an ArgumentError regardless of value.
 
     The original guard only rejected precision != 4, so the *default* value
     slipped through: `eval "1/2" --exact --precision 4` printed 1/2. Spec R11:
@@ -146,7 +146,7 @@ def test_r11_exact_plus_precision_always_rejected():
 
 
 def test_r3_base64_decode_non_utf8_file_typed_error(tmp_path):
-    """Solomon fix-round: non-UTF-8 @file on decode -> typed ArgumentError."""
+    """Fix round: non-UTF-8 @file on decode -> typed ArgumentError."""
     f = tmp_path / "bad.b64"
     f.write_bytes(b"\xff\xfe\x00")
     proc = run_calc("base64", "decode", f"@{f}")

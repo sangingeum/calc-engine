@@ -129,7 +129,7 @@ def test_issue4_seed_20260921_stream_matches_scipy():
     Rounded-to-4dp input (what a JSON paste carries) gives 0.6590 — calc's
     value. The reported 0.0087 is not reproducible on this stream in any
     rounding; it is consistent with an invocation mismatch (wrong family/
-    wrong cdf), per the butler's 6-stream table in the issue body.
+    wrong cdf), per the 6-stream table in the issue body.
     """
     import subprocess
 

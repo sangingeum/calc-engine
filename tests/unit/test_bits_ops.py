@@ -160,7 +160,7 @@ class TestFloatBits:
         assert math.isnan(value)
 
     def test_bits_to_float_out_of_range_literal(self) -> None:
-        # S1 (solomon review of 2e27647): the literal must fit the width;
+        # Review follow-up (S1 of 2e27647): the literal must fit the width;
         # an out-of-range value is a typed MathError, not a generic crash.
         with pytest.raises(MathError, match="does not fit a 32-bit integer"):
             bits_ops.bits("bits-to-float", ["0x1ffffffff"], width=32)
@@ -177,7 +177,7 @@ class TestFloatBits:
 
     @pytest.mark.parametrize("value", ["0x3c00", "0x3fc0", "0xfc00"])
     def test_bits_to_float_width16_typed_error(self, value: str) -> None:
-        # GitHub issue #2 (vera gate): width 16 must be a typed, actionable
+        # GitHub issue #2 (QA gate): width 16 must be a typed, actionable
         # error, never "MathError: internal computation failure" (struct.error
         # leak). Chosen taxonomy: ArgumentError — an unsupported --width for
         # the operation, same family as an unknown CRC variant. IEEE-754
