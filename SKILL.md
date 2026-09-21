@@ -417,9 +417,11 @@ Every positional that carries data or text accepts:
 | `@@<text>` | literal text `@<text>` (escape) |
 
 Applies to: JSON dataset arguments of `stat`, `matrix`, `vector`, `gof`, and
-`sym` expressions; text arguments of `regex`; data argument of `hash`, `crc`,
-`base64` (read as RAW bytes — no decoding, no newline stripping; `base64
-decode` re-encodes as text). Read-only; regular files only; default cap
+`sym` expressions; the **subject** argument of `regex` (the last text
+argument — pattern and replacement are always literal); data argument of
+`hash`, `crc`, `base64` (read as RAW bytes — no decoding, no newline
+stripping; `base64 decode` re-encodes as text). Read-only; regular files
+only; default cap
 16 MiB, override with `--max-input-bytes N`. Only one `@-` per invocation.
 `--input hex` combined with `@file`: **the `@file` raw bytes take precedence**
 (the file's bytes are hashed as-is, not parsed as hex).

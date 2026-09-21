@@ -715,11 +715,23 @@ def _resolve_cli_inputs(args: argparse.Namespace) -> None:
     JSON/text arguments resolve to str; hash/crc/base64 resolve to bytes
     (handled inside the handler via ``_resolved_bytes`` so ``--input hex``
     semantics stay intact). Only one ``@-`` per invocation.
+
+    Regex is special-cased (issue 5): only the SUBJECT argument resolves —
+    the last of ``tokens`` (index 2 for ``sub``: pattern+replacement+subject).
+    Pattern and replacement are always literal, so regex patterns like
+    ``@\\w+`` never hit the resolver.
     """
     command = getattr(args, "command", None)
-    if command not in {"stat", "matrix", "vector", "regex", "gof", "sym"}:
+    if command == "regex":
+        tokens = getattr(args, "tokens", None)
+        if tokens:
+            cap = getattr(args, "max_input_bytes", None) or DEFAULT_MAX_INPUT_BYTES
+            resolved = resolve_all([tokens[-1]], max_bytes=cap) or [""]
+            args.tokens = tokens[:-1] + [resolved[0]]
         return
-    for field in ("datasets", "matrices", "vectors", "tokens", "operands", "exprs"):
+    if command not in {"stat", "matrix", "vector", "gof", "sym"}:
+        return
+    for field in ("datasets", "matrices", "vectors", "operands", "exprs"):
         values = getattr(args, field, None)
         if values is None:
             continue

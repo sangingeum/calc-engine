@@ -339,7 +339,9 @@ Python `re` dialect only in v1 (`--flavor python`); verify patterns
 separately for other languages. Matching runs in a subprocess with a 2 s
 execution budget — catastrophic backtracking is a `MathError`, not a hang.
 `test` returning false is a normal success (exit 0); only an invalid pattern
-is a `SyntaxError`. Flag letters: `i m s x a`.
+is a `SyntaxError`. Flag letters: `i m s x a`. The `@file`/`@-`/`@@` input
+resolver applies to the **subject** argument only; pattern and replacement
+are always literal (so `calc regex test '@\w+' 'hi @bob'` works).
 
 ```bash
 calc regex test '^\d+$' "12345"               # true
