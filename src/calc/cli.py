@@ -480,7 +480,12 @@ def _subparser_option_map(
     ``_SubParsersAction.choices`` to enumerate registered options. There is no
     public API for it; this is a deliberate, isolated dependency reviewed
     against the pinned Python/argparse version (3.11/3.12) — re-verify on any
-    interpreter upgrade.
+    interpreter upgrade. The interleaved-positional handling in
+    ``_normalize_positionals`` below exists precisely because argparse's
+    routing of a positional that appears after options into an ``nargs=\"?\"``
+    slot is version-specific (GitHub issue 7);
+    ``tests/contract/test_issue7_compare_moments.py`` pins the contract and
+    its doc-example test guards the documented forms.
     """
     subactions = [
         a for a in parser._actions if isinstance(a, argparse._SubParsersAction)
@@ -806,8 +811,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         # Issue 6: strays parked by _normalize_positionals are reported here,
         # verbatim and whole (`--foo 3`), before argparse's own leftovers.
+        # argparse also sees the parked tokens (they stay in the rebuilt argv),
+        # so de-duplicate to keep exactly one copy per token.
         if stray_options:
-            unknown = [*stray_options, *unknown]
+            stray_set = set(stray_options)
+            unknown = [*stray_options, *(u for u in unknown if u not in stray_set)]
         if unknown:
             raise ArgumentError(f"unrecognized arguments: {' '.join(unknown)}")
         if getattr(args, "exact", False) and getattr(args, "precision", None) is not None:
