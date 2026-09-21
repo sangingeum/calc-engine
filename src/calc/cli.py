@@ -14,6 +14,7 @@ import sys
 from collections.abc import Sequence
 
 from calc.errors import ArgumentError, CalcError
+from calc.input_resolver import DEFAULT_MAX_INPUT_BYTES, resolve_all, resolve_token
 from calc.ops import (
     assert_ops,
     base_ops,
@@ -23,11 +24,13 @@ from calc.ops import (
     distribution_ops,
     eval_ops,
     finance_ops,
+    gof_ops,
     hash_ops,
     matrix_ops,
     physics_ops,
     regex_ops,
     stat_ops,
+    sym_ops,
     unit_ops,
     vector_ops,
 )
@@ -49,11 +52,34 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True, metavar="command")
 
+    max_input_parent = argparse.ArgumentParser(add_help=False)
+    max_input_parent.add_argument(
+        "--max-input-bytes",
+        dest="max_input_bytes",
+        type=int,
+        default=None,
+        help=f"file/stdin input size cap (default {DEFAULT_MAX_INPUT_BYTES})",
+    )
+
     p = sub.add_parser("eval", parents=[precision_parent], help="evaluate a math expression")
     p.add_argument("expr", help="expression, e.g. '2+2' or 'sqrt(2)'")
+    p.add_argument(
+        "--let",
+        action="append",
+        default=None,
+        metavar="NAME=NUMBER",
+        help="bind a numeric variable (repeatable): --let a=2 --let b=3",
+    )
+    p.add_argument(
+        "--exact",
+        action="store_true",
+        help="exact rational arithmetic (Fraction); prints an integer or p/q",
+    )
 
     p = sub.add_parser(
-        "stat", parents=[precision_parent], help="statistics over a JSON dataset"
+        "stat",
+        parents=[precision_parent, max_input_parent],
+        help="statistics over a JSON dataset",
     )
     p.add_argument(
         "op",
@@ -61,6 +87,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "mean|median|mode|stdev|variance|pvariance|sum|min|max|count"
             "|geometric_mean|harmonic_mean"
             "|covariance|pearson|spearman|regression|quantile|rank"
+            "|skewness|kurtosis|excess-kurtosis|critical-r"
         ),
     )
     p.add_argument(
@@ -76,7 +103,23 @@ def _build_parser() -> argparse.ArgumentParser:
         "--field",
         default=None,
         help="regression: slope|intercept|r2|stderr|slope_stderr|"
-        "residual_stderr|residual_variance",
+        "residual_stderr|residual_variance; pearson/spearman: "
+        "coefficient|p|t|df|n; critical-r: r (the critical |r|)",
+    )
+    p.add_argument(
+        "--alternative",
+        default=None,
+        choices=["two-sided", "greater", "less"],
+        help="pearson/spearman/critical-r: two-sided (default)|greater|less",
+    )
+    p.add_argument(
+        "--alpha",
+        type=float,
+        default=None,
+        help="critical-r: significance level (e.g. 0.05)",
+    )
+    p.add_argument(
+        "--n", type=float, default=None, help="critical-r: sample size (required)"
     )
 
     p = sub.add_parser(
@@ -97,7 +140,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--principal", type=float, default=None, help="principal (pmt)")
 
     p = sub.add_parser(
-        "matrix", parents=[precision_parent], help="matrix operations (JSON matrices)"
+        "matrix",
+        parents=[precision_parent, max_input_parent],
+        help="matrix operations (JSON matrices)",
     )
     p.add_argument("op", help="multiply|add|subtract|inverse|determinant|transpose")
     p.add_argument("matrices", nargs="+", help="one or two JSON matrices")
@@ -149,7 +194,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("symbols", nargs="*", help=argparse.SUPPRESS)
 
     p = sub.add_parser(
-        "vector", parents=[precision_parent], help="vector operations (JSON vectors)"
+        "vector",
+        parents=[precision_parent, max_input_parent],
+        help="vector operations (JSON vectors)",
     )
     p.add_argument("op", help="dot|cross|norm|add|subtract")
     p.add_argument("vectors", nargs="+", help="one or two JSON vectors")
@@ -180,19 +227,35 @@ def _build_parser() -> argparse.ArgumentParser:
         "--order", default=None, help="byte order for to-bytes/from-bytes: little|big"
     )
 
-    p = sub.add_parser("hash", parents=[precision_parent], help="hash digests")
+    p = sub.add_parser(
+        "hash",
+        parents=[precision_parent, max_input_parent],
+        help="hash digests",
+    )
     p.add_argument("algorithm", help="md5|sha1|sha256|sha512|sha3_256|blake2b")
-    p.add_argument("data", help="input text (or hex bytes with --input hex)")
+    p.add_argument(
+        "data", help="input text (or hex bytes with --input hex; @file for raw bytes)"
+    )
     p.add_argument("--input", default=None, help="input format: text|hex (default text)")
 
-    p = sub.add_parser("crc", parents=[precision_parent], help="CRC digests")
+    p = sub.add_parser(
+        "crc",
+        parents=[precision_parent, max_input_parent],
+        help="CRC digests",
+    )
     p.add_argument(
         "variant", help="crc32|crc32c|crc16-ccitt-false|crc16-xmodem|crc16-modbus|crc8"
     )
-    p.add_argument("data", help="input text (or hex bytes with --input hex)")
+    p.add_argument(
+        "data", help="input text (or hex bytes with --input hex; @file for raw bytes)"
+    )
     p.add_argument("--input", default=None, help="input format: text|hex (default text)")
 
-    p = sub.add_parser("base64", parents=[precision_parent], help="base64 encode/decode")
+    p = sub.add_parser(
+        "base64",
+        parents=[precision_parent, max_input_parent],
+        help="base64 encode/decode",
+    )
     p.add_argument("op", help="encode|decode")
     p.add_argument("data", help="text to encode, or base64 to decode")
     p.add_argument("--urlsafe", action="store_true", help="use the URL-safe alphabet (-_)")
@@ -221,7 +284,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--weeks", type=float, default=0.0, help="add: weeks")
 
     p = sub.add_parser(
-        "regex", parents=[precision_parent], help="regex operations (Python dialect only)"
+        "regex",
+        parents=[precision_parent, max_input_parent],
+        help="regex operations (Python dialect only)",
     )
     p.add_argument("op", help="test|findall|groups|sub")
     p.add_argument(
@@ -231,20 +296,74 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--flavor", default=None, help="regex flavor (v1: python only)")
 
     p = sub.add_parser(
+        "gof",
+        parents=[precision_parent, max_input_parent],
+        help="goodness-of-fit tests (ks, chi2, chi2-bins); --field required",
+    )
+    p.add_argument("op", help="ks|chi2|chi2-bins")
+    p.add_argument(
+        "operands",
+        nargs="+",
+        help="ks: DATA FAMILY; chi2: OBSERVED EXPECTED; chi2-bins: DATA FAMILY",
+    )
+    p.add_argument(
+        "--bins", type=float, default=None, help="chi2-bins: number of equiprobable bins"
+    )
+    p.add_argument("--ddof", dest="gof_ddof", type=int, default=0, help="chi2/chi2-bins: ddof")
+    p.add_argument(
+        "--field",
+        required=True,
+        help="statistic|p (all ops); df additionally for chi2|chi2-bins",
+    )
+    for name, helptext in (
+        ("alpha", "beta: first shape"),
+        ("beta", "beta: second shape"),
+        ("mu", "normal/lognormal: mean (of the log for lognormal)"),
+        ("sigma", "normal/lognormal: standard deviation"),
+        ("low", "uniform: lower bound"),
+        ("high", "uniform: upper bound"),
+        ("lam", "poisson: rate (ks: rejected)"),
+        ("scale", "exponential/gamma: scale"),
+        ("shape", "gamma: shape"),
+        ("n", "binomial (ks: rejected)"),
+        ("p", "binomial (ks: rejected)"),
+        ("df", "t/chi2: degrees of freedom (> 0)"),
+        ("a", "kumaraswamy: a > 0"),
+        ("b", "kumaraswamy: b > 0"),
+    ):
+        p.add_argument(f"--{name}", type=float, default=None, help=helptext)
+
+    p = sub.add_parser(
+        "sym",
+        parents=[precision_parent, max_input_parent],
+        help="symbolic equivalence, simplify, expand (real domain)",
+    )
+    p.add_argument("op", help="equiv|simplify|expand")
+    p.add_argument("exprs", nargs="+", help="1 expression (simplify|expand) or 2 (equiv)")
+    p.add_argument(
+        "--var",
+        action="append",
+        default=None,
+        help="declared symbol (repeatable; required for any symbols used)",
+    )
+
+    p = sub.add_parser(
         "distribution",
         parents=[precision_parent],
-        help="distribution moments, pdf/cdf/ppf, sampling, validation, moment comparison",
+        help="distribution moments, pdf/cdf/ppf/sf, sampling, validation, moments, fit",
+        allow_abbrev=False,
     )
     p.add_argument(
         "op",
         help=(
             "describe|mean|variance|stddev|skewness|kurtosis|excess-kurtosis"
-            "|pdf|cdf|ppf|sample|validate|compare-moments"
+            "|pdf|cdf|ppf|sf|sample|validate|compare-moments|fit"
         ),
     )
     p.add_argument(
         "family",
-        help=("uniform|beta|normal|lognormal|exponential|gamma|binomial|poisson"),
+        help=("uniform|beta|normal|lognormal|exponential|gamma|binomial|poisson"
+              "|t|chi2|kumaraswamy"),
     )
     p.add_argument(
         "value",
@@ -275,6 +394,9 @@ def _build_parser() -> argparse.ArgumentParser:
         ("shape", "gamma: shape"),
         ("n", "binomial: trials (non-negative integer)"),
         ("p", "binomial: success probability"),
+        ("df", "t/chi2: degrees of freedom (> 0)"),
+        ("a", "kumaraswamy: a > 0"),
+        ("b", "kumaraswamy: b > 0"),
         ("x", "pdf/cdf: evaluation point (positional preferred)"),
         ("q", "ppf: probability (positional preferred)"),
         ("size", "sample: number of variates"),
@@ -290,8 +412,20 @@ def _build_parser() -> argparse.ArgumentParser:
         ("shape2", "second distribution: shape"),
         ("n2", "second distribution: n"),
         ("p2", "second distribution: p"),
+        ("df2", "second distribution: df"),
+        ("a2", "second distribution: a"),
+        ("b2", "second distribution: b"),
     ):
         p.add_argument(f"--{name}", type=float, default=None, help=helptext)
+    # fit (R9) needs named float/string fields that the loop above cannot give:
+    p.add_argument("--mean", type=float, default=None, help="fit: target mean M")
+    p.add_argument("--variance", type=float, default=None, help="fit: target variance V")
+    p.add_argument(
+        "--field",
+        dest="fit_param",
+        default=None,
+        help="fit: fitted parameter name (family-specific)",
+    )
 
     p = sub.add_parser(
         "assert", parents=[precision_parent], help="deterministic assertions (stdout: true)"
@@ -325,10 +459,88 @@ def _parse_dynamic_kwargs(tokens: Sequence[str]) -> dict[str, float]:
     return kwargs
 
 
+def _subparser_option_map(
+    parser: argparse.ArgumentParser,
+) -> dict[tuple[str, str], argparse.Action]:
+    """Map each subcommand's option strings to their actions (R2 preprocessing)."""
+    subactions = [
+        a for a in parser._actions if isinstance(a, argparse._SubParsersAction)
+    ]
+    result: dict[tuple[str, str], argparse.Action] = {}
+    if not subactions:
+        return result
+    for choice, subparser in subactions[0].choices.items():
+        for action in subparser._actions:
+            for opt in action.option_strings:
+                result[(choice, opt)] = action
+    return result
+
+
+def _normalize_positionals(
+    argv: list[str], option_map: dict[tuple[str, str], argparse.Action]
+) -> list[str]:
+    """R2: move leading-dash positionals past ``--`` so argparse accepts them.
+
+    argv[0] must be the subcommand (argparse requires it). Tokens after it are
+    split into options (matched against the subparser's registered option
+    strings, consuming one value for value-taking options) and positionals
+    (everything else, including ``-2+5``, ``-abc``, ``@file``). Rebuild as
+    ``<subcmd> <options...> -- <positionals...>``; a user ``--`` forces the
+    remainder positional verbatim. If everything is already option-first with
+    no leading-dash positional, argv is returned unchanged.
+    """
+    if not argv or argv[0] not in {c for (c, _) in option_map}:
+        return argv
+    cmd = argv[0]
+    tokens = argv[1:]
+    options: list[str] = []
+    positionals: list[str] = []
+    i = 0
+    saw_double_dash = False
+    needs_fix = False
+    while i < len(tokens):
+        token = tokens[i]
+        if not saw_double_dash and token == "--":
+            saw_double_dash = True
+            positionals.extend(tokens[i + 1 :])
+            break
+        action = option_map.get((cmd, token)) if not saw_double_dash else None
+        if action is not None:
+            options.append(token)
+            takes_value = action.nargs is None and not isinstance(
+                action, argparse._StoreConstAction
+            )
+            if takes_value and i + 1 < len(tokens):
+                options.append(tokens[i + 1])
+                i += 1
+            i += 1
+            continue
+        # positional: leading-dash non-options are the R2 hazard
+        if token.startswith("-") and len(token) > 1:
+            needs_fix = True
+        positionals.append(token)
+        i += 1
+    if not needs_fix:
+        return argv
+    return [cmd, *options, "--", *positionals]
+
+
 def _handlers() -> dict:
     return {
-        "eval": lambda a: eval_ops.evaluate(a.expr),
-        "stat": lambda a: stat_ops.stat_command(a.op, a.datasets, ddof=a.ddof, field=a.field),
+        "eval": lambda a: eval_ops.evaluate(
+            a.expr,
+            let_bindings=a.let,
+            exact=getattr(a, "exact", False),
+        ),
+        "stat": lambda a: stat_ops.stat_command(
+            a.op,
+            a.datasets,
+            ddof=a.ddof,
+            field=a.field,
+            alternative=a.alternative,
+            alpha=a.alpha,
+            n=a.n,
+        ),
         "finance": lambda a: finance_ops.finance(
             a.op,
             pv=a.pv,
@@ -350,16 +562,48 @@ def _handlers() -> dict:
             a.op, a.values, width=a.width, fmt=a.format, signed=a.signed
         ),
         "endian": lambda a: bits_ops.endian(a.op, a.value, width=a.width, order=a.order),
-        "hash": lambda a: hash_ops.hash_digest(a.algorithm, a.data, input_format=a.input),
-        "crc": lambda a: hash_ops.crc_digest(a.variant, a.data, input_format=a.input),
+        "hash": lambda a: hash_ops.hash_digest(
+            a.algorithm,
+            a.data,
+            input_format=a.input,
+            raw_bytes=_resolved_bytes(a.data, a.max_input_bytes),
+        ),
+        "crc": lambda a: hash_ops.crc_digest(
+            a.variant,
+            a.data,
+            input_format=a.input,
+            raw_bytes=_resolved_bytes(a.data, a.max_input_bytes),
+        ),
         "base64": lambda a: hash_ops.base64_code(
-            a.op, a.data, urlsafe=a.urlsafe, output_format=a.output
+            a.op,
+            a.data,
+            urlsafe=a.urlsafe,
+            output_format=a.output,
+            raw_bytes=_resolved_bytes(a.data, a.max_input_bytes),
         ),
         "datetime": lambda a: _datetime_handler(a),
         "regex": lambda a: _regex_handler(a),
         "distribution": lambda a: distribution_ops.distribution_command(a),
         "assert": lambda a: assert_ops.assert_command(a.op, a.values, atol=a.atol, rtol=a.rtol),
+        "gof": lambda a: gof_ops.gof_command(a),
+        "sym": lambda a: sym_ops.sym_command(a),
     }
+
+
+def _resolved_bytes(token: str, max_input_bytes: int | None) -> bytes | None:
+    """Resolve a hash/crc/base64 data token to raw bytes when it is a file/stdin ref.
+
+    Returns ``None`` when the token is not a file reference (``@<path>`` /
+    ``@-`` / ``@@`` escape); the op then handles it as text/hex as before.
+    """
+    if token.startswith("@"):
+        cap = (
+            max_input_bytes
+            if max_input_bytes is not None
+            else DEFAULT_MAX_INPUT_BYTES
+        )
+        return resolve_token(token, binary=True, max_bytes=cap)  # type: ignore[return-value]
+    return None
 
 
 def _regex_handler(a: argparse.Namespace) -> object:
@@ -374,6 +618,36 @@ def _regex_handler(a: argparse.Namespace) -> object:
     if len(a.tokens) != 2:
         raise ArgumentError(f"regex {a.op} takes exactly a pattern and a subject")
     return regex_ops.regex(a.op, a.tokens[0], a.tokens[1], flags=a.flags, flavor=a.flavor)
+
+
+_DATA_POSITIONAL_FIELDS = frozenset(
+    {
+        ("stat", "datasets"),
+        ("matrix", "matrices"),
+        ("vector", "vectors"),
+        ("regex", "tokens"),
+        ("gof", "operands"),
+        ("sym", "exprs"),
+    }
+)
+
+
+def _resolve_cli_inputs(args: argparse.Namespace) -> None:
+    """Apply the R3 resolver to data-bearing positionals, in place.
+
+    JSON/text arguments resolve to str; hash/crc/base64 resolve to bytes
+    (handled inside the handler via ``_resolved_bytes`` so ``--input hex``
+    semantics stay intact). Only one ``@-`` per invocation.
+    """
+    command = getattr(args, "command", None)
+    if command not in {"stat", "matrix", "vector", "regex", "gof", "sym"}:
+        return
+    for field in ("datasets", "matrices", "vectors", "tokens", "operands", "exprs"):
+        values = getattr(args, field, None)
+        if values is None:
+            continue
+        cap = getattr(args, "max_input_bytes", None) or DEFAULT_MAX_INPUT_BYTES
+        setattr(args, field, resolve_all(list(values), max_bytes=cap))
 
 
 def _extract_physics_kwargs(argv: Sequence[str]) -> tuple[list[str], dict[str, float]]:
@@ -455,11 +729,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     argv = list(sys.argv[1:]) if argv is None else list(argv)
     argv, physics_kwargs = _extract_physics_kwargs(argv)
     parser = _build_parser()
+    argv = _normalize_positionals(argv, _subparser_option_map(parser))
     args, unknown = parser.parse_known_args(argv)
     try:
         if unknown:
             raise ArgumentError(f"unrecognized arguments: {' '.join(unknown)}")
+        if getattr(args, "exact", False) and getattr(args, "precision", None) != 4:
+            raise ArgumentError("--exact cannot be combined with --precision")
         args.kwargs = physics_kwargs
+        _resolve_cli_inputs(args)
         result = _handlers()[args.command](args)
     except CalcError as exc:
         print(f"{type(exc).prefix}: {exc}", file=sys.stderr)

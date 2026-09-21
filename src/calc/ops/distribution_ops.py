@@ -39,11 +39,29 @@ _FAMILIES = (
     "gamma",
     "binomial",
     "poisson",
+    "t",
+    "chi2",
+    "kumaraswamy",
 )
 
 _MOMENTS = ("mean", "variance", "stddev", "skewness", "kurtosis")
 
-_PARAM_KEYS = ("alpha", "beta", "mu", "sigma", "low", "high", "lam", "scale", "shape", "n", "p")
+_PARAM_KEYS = (
+    "alpha",
+    "beta",
+    "mu",
+    "sigma",
+    "low",
+    "high",
+    "lam",
+    "scale",
+    "shape",
+    "n",
+    "p",
+    "df",
+    "a",
+    "b",
+)
 
 
 class _Params:
@@ -104,11 +122,94 @@ def _scipy_dist(params: _Params) -> Any:
         if not 0 <= p <= 1:
             raise MathError("binomial requires 0 <= p <= 1")
         return sps.binom(int(n), p)
-    # poisson
-    lam = params.get("lam")
-    if lam <= 0:
-        raise MathError("poisson requires lam > 0")
-    return sps.poisson(lam)
+    if fam == "poisson":
+        lam = params.get("lam")
+        if lam <= 0:
+            raise MathError("poisson requires lam > 0")
+        return sps.poisson(lam)
+    if fam == "t":
+        df = params.get("df")
+        if df <= 0:
+            raise MathError("t requires df > 0")
+        return sps.t(df)
+    if fam == "chi2":
+        df = params.get("df")
+        if df <= 0:
+            raise MathError("chi2 requires df > 0")
+        return sps.chi2(df)
+    # kumaraswamy (R6): closed-form CDF/PPF/raw moments; scipy has no family.
+    a = params.get("a")
+    b = params.get("b")
+    if a <= 0 or b <= 0:
+        raise MathError("kumaraswamy requires a > 0 and b > 0")
+    return _Kumaraswamy(a, b)
+
+
+class _Kumaraswamy:
+    """Kumaraswamy(a, b) on (0,1): closed-form CDF/PPF/raw moments (R6).
+
+    CDF  F(x) = 1 - (1 - x^a)^b
+    PPF  F^-1(q) = (1 - (1-q)^(1/b))^(1/a)
+    Raw moment m_n = b * B(1 + n/a, b)
+    pdf a*b*x^(a-1)*(1-x^a)^(b-1)
+    """
+
+    def __init__(self, a: float, b: float) -> None:
+        self.a = a
+        self.b = b
+
+    def pdf(self, x: float) -> float:
+        if x <= 0 or x >= 1:
+            return 0.0
+        return self.a * self.b * x ** (self.a - 1) * (1 - x**self.a) ** (self.b - 1)
+
+    def cdf(self, x: float) -> float:
+        if x <= 0:
+            return 0.0
+        if x >= 1:
+            return 1.0
+        return 1.0 - (1.0 - x**self.a) ** self.b
+
+    def ppf(self, q: float) -> float:
+        return (1.0 - (1.0 - q) ** (1.0 / self.b)) ** (1.0 / self.a)
+
+    def sf(self, x: float) -> float:
+        return 1.0 - self.cdf(x)
+
+    def mean(self) -> float:
+        return self._raw_moment(1)
+
+    def var(self) -> float:
+        m1 = self._raw_moment(1)
+        return self._raw_moment(2) - m1 * m1
+
+    def std(self) -> float:
+        return math.sqrt(self.var())
+
+    def stats(self, moments: str) -> Any:
+        out = []
+        for m in moments:
+            if m == "s":
+                out.append(self._central_moment(3))
+            elif m == "k":
+                out.append(self._central_moment(4) / self.var() ** 2 - 3.0)
+            elif m == "m":
+                out.append(self.mean())
+            elif m == "v":
+                out.append(self.var())
+        return out[0] if len(out) == 1 else tuple(out)
+
+    def _raw_moment(self, n: int) -> float:
+        from scipy import special
+
+        return self.b * float(special.beta(1.0 + n / self.a, self.b))
+
+    def _central_moment(self, n: int) -> float:
+        mean = self.mean()
+        total = 0.0
+        for k in range(n + 1):
+            total += math.comb(n, k) * (-mean) ** (n - k) * self._raw_moment(k)
+        return total
 
 
 def _moment(dist: Any, moment: str) -> float:
@@ -156,14 +257,31 @@ def _sample(params: _Params, size: float | None, seed: float | None) -> list[flo
         vals = rng.gamma(params.get("shape"), params.get("scale"), n)
     elif fam == "binomial":
         vals = rng.binomial(int(params.get("n")), params.get("p"), n)
-    else:  # poisson
-        vals = rng.poisson(params.get("lam"), n)
+    elif fam == "t":
+        vals = rng.standard_t(params.get("df"), n)
+    elif fam == "chi2":
+        vals = rng.chisquare(params.get("df"), n)
+    else:  # poisson / kumaraswamy
+        if fam == "kumaraswamy":
+            # inverse-CDF on the PCG64 uniform stream (spec-pinned method)
+            u = rng.random(n)
+            a = params.get("a")
+            b = params.get("b")
+            vals = (1.0 - (1.0 - u) ** (1.0 / b)) ** (1.0 / a)
+        else:
+            lam = params.get("lam")
+            if lam <= 0:
+                raise MathError("poisson requires lam > 0")
+            vals = rng.poisson(lam, n)
     return [float(v) for v in vals]
 
 
 def _build_params(family: str, args: types.SimpleNamespace, *, second: bool = False) -> _Params:
     suffix = "2" if second else ""
-    kwargs = {key: getattr(args, key + suffix) for key in _PARAM_KEYS}
+    kwargs = {}
+    for key in _PARAM_KEYS:
+        value = getattr(args, key + suffix, None)
+        kwargs[key] = value
     return _Params(family, kwargs)
 
 
@@ -224,8 +342,13 @@ def distribution_command(args: types.SimpleNamespace) -> str | float | list[floa
         return _validate(params)
     if op in ("mean", "variance", "stddev", "skewness", "kurtosis", "excess-kurtosis"):
         moment = "kurtosis" if op == "excess-kurtosis" else op
-        value = _moment(_scipy_dist(params), moment)
+        dist = _scipy_dist(params)
+        value = _moment(dist, moment)
+        if math.isnan(value):
+            raise MathError("moment undefined")
         return value - 3.0 if op == "excess-kurtosis" else value
+    if op == "fit":  # R9: closed-form moment matching (before any _scipy_dist)
+        return _fit(family, args)
     dist = _scipy_dist(params)
     if op == "describe":
         # single-value stdout contract: reject instead of structured output
@@ -249,9 +372,87 @@ def distribution_command(args: types.SimpleNamespace) -> str | float | list[floa
         if not 0 <= q <= 1:
             raise MathError("q must be in [0, 1]")
         return float(dist.ppf(q))
+    if op == "sf":  # R5: survival function, not 1 - cdf (precision-preserving)
+        if args.value is None and args.x is None:
+            raise ArgumentError("sf requires an evaluation point (positional or --x)")
+        x = float(args.value if args.value is not None else args.x)
+        if params.family in ("binomial", "poisson") and x == math.floor(x):
+            return float(dist.sf(int(x)))
+        return float(dist.sf(x))
+    if op == "fit":  # R9: closed-form moment matching
+        return _fit(family, args)
     if op == "sample":
         return _sample(params, args.size, args.seed)
     raise ArgumentError(
         f"unknown distribution operation: {op} (expected one of describe|mean|variance|stddev|"
-        f"skewness|kurtosis|excess-kurtosis|pdf|cdf|ppf|sample|validate|compare-moments)"
+        f"skewness|kurtosis|excess-kurtosis|pdf|cdf|ppf|sf|sample|validate|compare-moments|fit)"
     )
+
+
+# ---------------------------------------------------------------------------
+# R9: closed-form moment matching (`distribution fit`)
+# ---------------------------------------------------------------------------
+
+_FIT_FIELDS: dict[str, tuple[str, ...]] = {
+    "beta": ("alpha", "beta"),
+    "gamma": ("shape", "scale"),
+    "normal": ("mu", "sigma"),
+    "lognormal": ("mu", "sigma"),
+    "uniform": ("low", "high"),
+}
+
+
+def _fit(family: str, args: types.SimpleNamespace) -> float:
+    """Closed-form moment matching: return ONE fitted parameter (INV-1)."""
+    if family not in _FIT_FIELDS:
+        raise ArgumentError(
+            f"fit is not supported for family: {family} "
+            f"(supported: {', '.join(sorted(_FIT_FIELDS))})"
+        )
+    target_mean = args.mean
+    target_variance = args.variance
+    field = args.fit_param
+    if target_mean is None or target_variance is None:
+        raise ArgumentError("fit requires --mean M and --variance V")
+    if field is None:
+        raise ArgumentError(
+            f"fit requires --field (one of {', '.join(_FIT_FIELDS[family])})"
+        )
+    if field not in _FIT_FIELDS[family]:
+        raise ArgumentError(
+            f"unknown fit field for {family}: {field} "
+            f"(expected one of {', '.join(_FIT_FIELDS[family])})"
+        )
+    m = float(target_mean)
+    v = float(target_variance)
+    if family == "beta":
+        if not 0 < m < 1:
+            raise MathError("beta fit requires 0 < mean < 1")
+        if not v > 0:
+            raise MathError("beta fit requires variance > 0")
+        if v >= m * (1 - m):
+            raise MathError(
+                f"beta fit requires variance < mean*(1-mean) = {m * (1 - m)}; got {v}"
+            )
+        c = m * (1 - m) / v - 1
+        return m * c if field == "alpha" else (1 - m) * c
+    if family == "gamma":
+        if m <= 0 or v <= 0:
+            raise MathError("gamma fit requires mean > 0 and variance > 0")
+        return m * m / v if field == "shape" else v / m
+    if family == "normal":
+        if v <= 0:
+            raise MathError("normal fit requires variance > 0")
+        return m if field == "mu" else math.sqrt(v)
+    if family == "lognormal":
+        if m <= 0 or v <= 0:
+            raise MathError("lognormal fit requires mean > 0 and variance > 0")
+        sigma_sq = math.log(1 + v / (m * m))
+        if field == "sigma":
+            return math.sqrt(sigma_sq)
+        return math.log(m) - sigma_sq / 2
+    # uniform
+    if v <= 0:
+        raise MathError("uniform fit requires variance > 0")
+    half_width = math.sqrt(3 * v)
+    return m - half_width if field == "low" else m + half_width

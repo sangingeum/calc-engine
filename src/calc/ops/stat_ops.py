@@ -15,6 +15,8 @@ import json
 import math
 import statistics
 
+from scipy import stats as sps
+
 from calc.errors import ArgumentError, MathError, SyntaxError_
 
 _OPS = (
@@ -81,14 +83,40 @@ def stat(op: str, dataset: str) -> int | float:
     return max(data)  # op == "max"
 
 
-_UNIVARIATE_OPS = frozenset(_OPS) | {"quantile", "rank"}
+_UNIVARIATE_OPS = frozenset(_OPS) | {
+    "quantile",
+    "rank",
+    "skewness",
+    "kurtosis",
+    "excess-kurtosis",
+}
 _PAIRWISE_OPS = frozenset({"covariance", "pearson", "spearman", "regression"})
 
 
 def stat_command(
-    op: str, datasets: list[str], ddof: int = 0, field: str | None = None
+    op: str,
+    datasets: list[str],
+    ddof: int = 0,
+    field: str | None = None,
+    alternative: str | None = None,
+    alpha: float | None = None,
+    n: float | None = None,
 ) -> int | float | list[float]:
     """Dispatch the ``stat`` subcommand across univariate and pairwise ops."""
+    if op == "critical-r":
+        if field is not None:
+            raise ArgumentError(
+                "stat critical-r does not take --field (prints the critical |r|)"
+            )
+        return critical_r(
+            n=n,
+            alpha=alpha,
+            alternative=alternative or "two-sided",
+        )
+    if op in ("skewness", "kurtosis", "excess-kurtosis"):
+        if len(datasets) != 1:
+            raise ArgumentError(f"stat {op} takes exactly 1 dataset argument")
+        return shape_moment(op, datasets[0])
     if op in _UNIVARIATE_OPS:
         if op == "quantile":
             if len(datasets) != 2:
@@ -110,9 +138,13 @@ def stat_command(
         if op == "covariance":
             return covariance(datasets[0], datasets[1], ddof=ddof)
         if op == "pearson":
-            return pearson(datasets[0], datasets[1])
+            return _correlation_with_significance(
+                "pearson", datasets[0], datasets[1], field, alternative or "two-sided"
+            )
         if op == "spearman":
-            return spearman(datasets[0], datasets[1])
+            return _correlation_with_significance(
+                "spearman", datasets[0], datasets[1], field, alternative or "two-sided"
+            )
         # regression
         if field is None:
             raise ArgumentError("stat regression requires --field")
@@ -207,6 +239,125 @@ def spearman(x: str, y: str) -> float:
     if len(set(xs)) == 1 or len(set(ys)) == 1:
         raise MathError("zero rank variance: correlation undefined")
     return pearson(json.dumps(_average_ranks(xs)), json.dumps(_average_ranks(ys)))
+
+
+# ---------------------------------------------------------------------------
+# R4: correlation significance (pinned: t-approximation, df = n-2)
+# ---------------------------------------------------------------------------
+
+_CORRELATION_FIELDS = ("coefficient", "p", "t", "df", "n")
+_ALTERNATIVES = ("two-sided", "greater", "less")
+
+
+def _correlation_with_significance(
+    kind: str, x: str, y: str, field: str | None, alternative: str
+) -> float:
+    """pearson/spearman with optional --field selector (R4).
+
+    Default field is ``coefficient`` (byte-identical legacy output, INV-4).
+    p-value method (pinned, documented): t = r*sqrt((n-2)/(1-r^2)), df = n-2;
+    for Spearman this is computed on average ranks (scipy.stats.spearmanr
+    convention). |r| = 1 => p = 0; n < 3 => MathError.
+    """
+    field = field or "coefficient"
+    if field not in _CORRELATION_FIELDS:
+        raise ArgumentError(
+            f"unknown {kind} field: {field} "
+            f"(expected one of {', '.join(_CORRELATION_FIELDS)})"
+        )
+    if alternative not in _ALTERNATIVES:
+        raise ArgumentError(
+            f"unknown alternative: {alternative!r} (expected one of {', '.join(_ALTERNATIVES)})"
+        )
+    if kind == "pearson":
+        r = pearson(x, y)
+        xs, _ = _parse_pair(x, y)
+    else:
+        r = spearman(x, y)
+        xs, _ = _parse_pair(x, y)
+    n = len(xs)
+    if field == "n":
+        return float(n)
+    if field == "df":
+        return float(n - 2)
+    if field == "coefficient":
+        return r
+    if n < 3:
+        raise MathError("at least 3 observations are required for significance")
+    if abs(r) >= 1.0:
+        t_stat = math.copysign(math.inf, r)
+        p = 0.0
+    else:
+        t_stat = r * math.sqrt((n - 2) / (1 - r * r))
+        p = _t_pvalue(t_stat, n - 2, alternative)
+    if field == "t":
+        return t_stat if not math.isinf(t_stat) else math.copysign(1e308, t_stat)
+    return p
+
+
+def _t_pvalue(t_stat: float, dof: int, alternative: str) -> float:
+    """Two-sided/greater/less p from the t distribution with ``dof`` df."""
+    dist = sps.t(df=dof)
+    if alternative == "greater":
+        return float(dist.sf(t_stat))
+    if alternative == "less":
+        return float(dist.cdf(t_stat))
+    return float(2.0 * dist.sf(abs(t_stat)))
+
+
+def critical_r(
+    *, n: float | None, alpha: float | None, alternative: str = "two-sided"
+) -> float:
+    """Smallest |r| significant at level ``alpha`` (R4).
+
+    r_crit = t_crit / sqrt(n - 2 + t_crit^2); two-sided uses the 1-alpha/2
+    quantile of t with df = n-2; one-sided uses 1-alpha.
+    """
+    if n is None:
+        raise ArgumentError("stat critical-r requires --n")
+    if alpha is None:
+        raise ArgumentError("stat critical-r requires --alpha")
+    if alternative not in _ALTERNATIVES:
+        raise ArgumentError(
+            f"unknown alternative: {alternative!r} (expected one of {', '.join(_ALTERNATIVES)})"
+        )
+    if n != math.floor(n) or n < 3:
+        raise MathError("critical-r requires an integer n >= 3")
+    if not 0 < alpha < 1:
+        raise MathError("alpha must be in (0, 1)")
+    dof = int(n) - 2
+    quantile = 1 - alpha / 2 if alternative == "two-sided" else 1 - alpha
+    t_crit = float(sps.t.ppf(quantile, dof))
+    return t_crit / math.sqrt(dof + t_crit * t_crit)
+
+
+# ---------------------------------------------------------------------------
+# R12: dataset shape moments (population/biased, kurtosis NON-excess)
+# ---------------------------------------------------------------------------
+
+
+def shape_moment(op: str, dataset: str) -> float:
+    """Population (biased) standardized shape moments of a dataset.
+
+    Same conventions as ``distribution``: skewness = third standardized
+    moment; kurtosis = fourth standardized moment, NON-excess (normal = 3);
+    excess-kurtosis = kurtosis - 3. These are population moments of the
+    sample, not unbiased sample estimators.
+    """
+    data = _parse_series(dataset)
+    n = len(data)
+    if n < 2:
+        raise MathError("at least 2 observations are required")
+    mean = statistics.fmean(data)
+    m2 = sum((v - mean) ** 2 for v in data) / n
+    if m2 == 0:
+        raise MathError("zero variance: shape moments undefined")
+    if op == "skewness":
+        m3 = sum((v - mean) ** 3 for v in data) / n
+        return m3 / m2**1.5
+    m4 = sum((v - mean) ** 4 for v in data) / n
+    kurtosis = m4 / m2**2
+    return kurtosis - 3.0 if op == "excess-kurtosis" else kurtosis
 
 
 _REGRESSION_FIELDS = (

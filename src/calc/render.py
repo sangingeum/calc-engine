@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
+from fractions import Fraction
 
 
 def render(result: object, precision: int = 4) -> str:
@@ -21,6 +22,8 @@ def render(result: object, precision: int = 4) -> str:
         return result
     if isinstance(result, bool):  # defensive; booleans never reach stdout
         return str(int(result))
+    if isinstance(result, Fraction):  # R11 --exact: integer or p/q in lowest terms
+        return str(result)
     if isinstance(result, int):
         return str(result)
     if isinstance(result, float):

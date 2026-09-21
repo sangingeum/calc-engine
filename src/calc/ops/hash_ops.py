@@ -43,14 +43,27 @@ def _input_bytes(data: str, mode: str | None) -> bytes:
     return parse_hex_bytes(data)
 
 
-def hash_digest(algorithm: str, data: str, *, input_format: str | None = None) -> str:
-    """Digest of the input as lowercase hex."""
+def hash_digest(
+    algorithm: str,
+    data: str,
+    *,
+    input_format: str | None = None,
+    raw_bytes: bytes | None = None,
+) -> str:
+    """Digest of the input as lowercase hex.
+
+    ``raw_bytes`` (from the R3 resolver) hashes the file/stdin bytes as-is;
+    otherwise the input is UTF-8 text or hex per ``input_format``.
+    """
     if algorithm not in _HASHES:
         raise ArgumentError(
             f"unknown hash algorithm: {algorithm!r} (expected one of "
             f"{', '.join(sorted(_HASHES))})"
         )
-    return hashlib.new(_HASHES[algorithm], _input_bytes(data, input_format)).hexdigest()
+    payload = (
+        raw_bytes if raw_bytes is not None else _input_bytes(data, input_format)
+    )
+    return hashlib.new(_HASHES[algorithm], payload).hexdigest()
 
 
 def _bit_reverse(value: int, width: int) -> int:
@@ -117,13 +130,22 @@ _VARIANTS: dict[str, _CrcVariant] = {
 }
 
 
-def crc_digest(variant: str, data: str, *, input_format: str | None = None) -> str:
+def crc_digest(
+    variant: str,
+    data: str,
+    *,
+    input_format: str | None = None,
+    raw_bytes: bytes | None = None,
+) -> str:
     """CRC of the input as lowercase hex, zero-padded to the variant's width."""
     if variant not in _VARIANTS:
         raise ArgumentError(
             f"unknown CRC variant: {variant!r} (expected one of {', '.join(sorted(_VARIANTS))})"
         )
-    crc = _VARIANTS[variant].compute(_input_bytes(data, input_format))
+    payload = (
+        raw_bytes if raw_bytes is not None else _input_bytes(data, input_format)
+    )
+    crc = _VARIANTS[variant].compute(payload)
     width = _VARIANTS[variant].width
     return f"{crc:0{width // 4}x}"
 
@@ -134,12 +156,13 @@ def base64_code(
     *,
     urlsafe: bool = False,
     output_format: str | None = None,
+    raw_bytes: bytes | None = None,
 ) -> str:
     """Base64 encode/decode; decode output is UTF-8 text or hex with --output hex."""
     if op not in ("encode", "decode"):
         raise ArgumentError(f"unknown base64 operation: {op!r} (expected encode|decode)")
     if op == "encode":
-        raw = data.encode("utf-8")
+        raw = raw_bytes if raw_bytes is not None else data.encode("utf-8")
         return (
             b64.urlsafe_b64encode(raw).decode("ascii")
             if urlsafe
@@ -147,6 +170,9 @@ def base64_code(
         )
     if output_format not in (None, _HEX):
         raise ArgumentError(f"unknown output format: {output_format!r} (expected hex)")
+    if raw_bytes is not None:
+        # @file input on decode: the file holds the base64 text.
+        data = raw_bytes.decode("utf-8", errors="strict")
     # Strict validation for both alphabets: stdlib decoders silently ignore
     # invalid characters by default, which would break the SyntaxError contract.
     if urlsafe:
