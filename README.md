@@ -46,6 +46,98 @@ count, geometric_mean, harmonic_mean`. Dataset is a JSON array of numbers.
 On multimodal data, `mode` returns the FIRST mode only (single-value stdout
 contract).
 
+#### stat — pairwise / extended operations
+
+```bash
+calc stat covariance "[1,2,3]" "[2,4,6]"              # 1.3333 (population, ddof=0)
+calc stat covariance "[1,2,3]" "[2,4,6]" --ddof 1     # 2.0000 (sample)
+calc stat pearson "[1,2,3]" "[2,4,6]"                 # 1.0000
+calc stat spearman "[1,2,3]" "[30,10,20]"             # -0.5000 (average ranks for ties)
+calc stat rank "[30,10,20]"                           # [3.0000,1.0000,2.0000]
+calc stat regression "[0,1,2,3]" "[1,3,5,7]" --field slope     # 2.0000
+calc stat regression "[0,1,2,3]" "[1,3,5,7]" --field stderr    # slope stderr (alias of slope_stderr)
+calc stat quantile "[1,2,3,4,5]" 0.5                  # 3.0000
+```
+
+Conventions (all pinned by tests):
+
+- `covariance`: population by default; `--ddof 1` divides by n-1.
+- `spearman`/`rank`: average ranks for ties (1-based), deterministic.
+- `regression`: OLS on (X, Y). `--field` one of `slope, intercept, r2,
+  stderr, slope_stderr, residual_stderr, residual_variance`. `stderr` is an
+  explicit alias of `slope_stderr`; `residual_stderr` =
+  sqrt(SSR/(n-2)); `residual_variance` = SSR/(n-2). Requires ≥ 3 observations.
+- `quantile`: NumPy-compatible `linear` interpolation, h = (n-1)*q, q in [0,1].
+- Domain errors: length mismatch / too few observations → `ArgumentError`;
+  zero variance → `MathError`.
+
+### distribution — probability distributions
+
+Eight families with named parameters:
+
+| family | parameters | constraints |
+|---|---|---|
+| `uniform` | `--low --high` | low < high |
+| `beta` | `--alpha --beta` | alpha > 0, beta > 0 |
+| `normal` | `--mu --sigma` | sigma > 0 |
+| `lognormal` | `--mu --sigma` | sigma > 0 (log X ~ N(mu, sigma^2)) |
+| `exponential` | `--scale` | scale > 0 |
+| `gamma` | `--shape --scale` | shape > 0, scale > 0 |
+| `binomial` | `--n --p` | n non-negative integer, 0 ≤ p ≤ 1 |
+| `poisson` | `--lam` | lam > 0 |
+
+Operations (all deterministic):
+
+```bash
+calc distribution mean beta --alpha 2 --beta 2          # 0.5000
+calc distribution variance beta --alpha 2 --beta 2      # 0.0500
+calc distribution variance beta --alpha 4.05 --beta 4.05 # 0.0275 (NOT 0.05!)
+calc distribution stddev beta --alpha 2 --beta 2        # 0.2236
+calc distribution skewness gamma --shape 2 --scale 3    # 1.4142
+calc distribution kurtosis normal --mu 0 --sigma 1      # 3.0000 (non-excess)
+calc distribution excess-kurtosis normal --mu 0 --sigma 1  # 0.0000
+calc distribution pdf beta 0.5 --alpha 2 --beta 2       # 1.5000  (positional x, or --x)
+calc distribution cdf beta 0.5 --alpha 2 --beta 2       # 0.5000
+calc distribution ppf beta 0.5 --alpha 2 --beta 2       # 0.5000  (positional q, or --q)
+calc distribution validate beta --alpha 2 --beta 2      # true
+calc distribution sample beta --alpha 2 --beta 2 --size 5 --seed 123
+                                                        # [0.1486,0.7646,0.4182,0.5289,0.7776]
+calc distribution compare-moments beta --alpha 2 --beta 2 uniform --low 0 --high 1 --moment mean
+                                                        # true
+```
+
+- `kurtosis` is non-excess (fourth standardized moment, normal = 3);
+  `excess-kurtosis` = kurtosis − 3.
+- `sample` uses numpy's PCG64 via `default_rng(seed)`; `--seed` is required,
+  no implicit time source. Same seed → same stream across runs/environments.
+- `compare-moments` prints `true`/`false` for one moment (`--moment` =
+  mean|variance|stddev|skewness|kurtosis) of two families.
+- `describe` is intentionally rejected under the single-value stdout
+  contract — use `mean`/`variance`/`stddev` separately.
+- Invalid parameters are typed `MathError` domain failures; missing
+  parameters are `ArgumentError`.
+
+**Warning: a distribution's mean matching another distribution does not
+imply variance, tail behavior, modality, or other shape properties are
+matched** — Beta(2,2) and Uniform(0,1) share the mean (0.5) but differ in
+variance (0.05 vs 1/12). Use `compare-moments --moment variance` to check.
+
+### assert — deterministic assertions
+
+```bash
+calc assert approx 0.5 0.4999999            # true (atol/rtol default 1e-6)
+calc assert approx 1 1.000001 --atol 1e-5   # true
+calc assert equal 1 1                       # true
+calc assert between 0.5 0 1                 # true (endpoints INCLUSIVE)
+calc assert sign 0.35 positive              # true
+calc assert abs-lt 0.01 0.05                # true
+calc assert abs-gt 0.10 0.05                # true
+```
+
+Sign names: `positive, negative, zero, nonnegative, nonpositive`. A failed
+assertion is a domain failure: stderr `AssertionError: ...`, exit 1, empty
+stdout. `abs-lt`/`abs-gt` compare absolute values.
+
 ### finance — financial operations
 
 Mirrors numpy-financial signatures with strict exactly-required-set
@@ -266,6 +358,7 @@ non-real results are a `MathError`.
 | `SyntaxError` | bad input formatting: unparseable expression, invalid JSON, invalid digits |
 | `ValueError` | unsupported unit or unknown physical constant |
 | `ArgumentError` | missing/extra arguments, unknown operation/algorithm/CRC variant/symbol, naive timestamp without --tz/--from, missing --width |
+| `AssertionError` | failed `assert` operation (domain failure, exit 1, empty stdout) |
 | `MathError` | invalid math: division by zero, bad dimensions, singular inverse, non-real result, value does not fit the bit width, negative shift, regex execution budget exceeded |
 
 ## Agent integration contract

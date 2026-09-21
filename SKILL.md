@@ -1,6 +1,6 @@
 ---
 name: calc-engine
-description: Deterministic `calc` CLI math engine for AI agents — zero-chat stdout, typed stderr errors, 17 subcommands (eval, stat, finance, matrix, convert-base, convert-unit, calculus, physics-constant, physics, vector, bits, endian, hash, crc, base64, datetime, regex). Use whenever an agent needs safe computation offloaded to a subprocess.
+description: Deterministic `calc` CLI math engine for AI agents — zero-chat stdout, typed stderr errors, 19 subcommands (eval, stat, finance, matrix, convert-base, convert-unit, calculus, physics-constant, physics, vector, bits, endian, hash, crc, base64, datetime, regex, distribution, assert). Use whenever an agent needs safe computation or statistical/probabilistic verification offloaded to a subprocess.
 ---
 
 # calc — CLI math engine for agents
@@ -157,6 +157,14 @@ calc convert-unit 60 mph m/s       # 26.8224
 
 ```bash
 calc stat mean "[1,2,3,4]"            # mean|median|mode|stdev|variance|pvariance|sum|min|max|count|geometric_mean|harmonic_mean (JSON array; mode returns FIRST mode)
+calc stat covariance "[1,2,3]" "[2,4,6]"      # 1.3333 — population cov (ddof=0 default); --ddof 1 for sample
+calc stat pearson "[1,2,3]" "[2,4,6]"         # 1.0000 — Pearson r; zero variance -> MathError
+calc stat spearman "[1,2,3]" "[30,10,20]"     # -0.5000 — average ranks for ties
+calc stat rank "[30,10,20]"                   # [3.0000,1.0000,2.0000] — 1-based average ranks
+calc stat regression "[0,1,2,3]" "[1,3,5,7]" --field slope   # 2.0000
+#   --field: slope|intercept|r2|stderr|slope_stderr|residual_stderr|residual_variance
+#   stderr IS slope_stderr (explicit alias); residual_stderr = sqrt(SSR/(n-2)); residual_variance = SSR/(n-2)
+calc stat quantile "[1,2,3,4,5]" 0.5          # 3.0000 — NumPy 'linear': h=(n-1)*q
 calc finance fv --rate 0.05 --periods 10 --pv 1000
 calc finance pv --rate 0.05 --periods 10 --fv 1628.89
 calc finance pmt --rate 0.05 --periods 10 --principal 1000   # pmt: --principal, --pv alias; strict exact arg sets
@@ -237,6 +245,86 @@ unknown or ambiguous targets are `ArgumentError`.
 
 ---
 
+## distribution — probability distributions (verification backend)
+
+Eight families; parameters are always **named flags**:
+
+| family | flags | parameterization / constraints |
+|---|---|---|
+| `uniform` | `--low --high` | pdf = 1/(high−low) on [low, high]; low < high |
+| `beta` | `--alpha --beta` | shape/shape; both > 0 |
+| `normal` | `--mu --sigma` | N(mu, sigma^2); sigma > 0 |
+| `lognormal` | `--mu --sigma` | log X ~ N(mu, sigma^2); sigma > 0 |
+| `exponential` | `--scale` | rate = 1/scale; scale > 0 |
+| `gamma` | `--shape --scale` | both > 0 |
+| `binomial` | `--n --p` | n non-negative INTEGER, 0 ≤ p ≤ 1 |
+| `poisson` | `--lam` | lam > 0 |
+
+Operations (one value per stdout line, byte-exact):
+
+```bash
+calc distribution mean beta --alpha 2 --beta 2           # 0.5000
+calc distribution variance beta --alpha 2 --beta 2       # 0.0500
+calc distribution variance beta --alpha 4.05 --beta 4.05 # 0.0275  ← named regression case; NOT 0.05
+calc distribution stddev beta --alpha 2 --beta 2         # 0.2236
+calc distribution skewness beta --alpha 2 --beta 2       # 0.0000
+calc distribution kurtosis normal --mu 0 --sigma 1       # 3.0000
+calc distribution excess-kurtosis normal --mu 0 --sigma 1 # 0.0000
+calc distribution pdf beta 0.5 --alpha 2 --beta 2        # 1.5000 (positional x; --x also accepted)
+calc distribution cdf beta 0.5 --alpha 2 --beta 2        # 0.5000
+calc distribution ppf beta 0.5 --alpha 2 --beta 2        # 0.5000 (positional q; --q also accepted)
+calc distribution validate beta --alpha 2 --beta 2       # true
+calc distribution sample beta --alpha 2 --beta 2 --size 5 --seed 123
+                                                         # [0.1486,0.7646,0.4182,0.5289,0.7776]
+calc distribution compare-moments beta --alpha 2 --beta 2 uniform --low 0 --high 1 --moment mean
+                                                         # true
+```
+
+Definitions and conventions (pinned by tests):
+
+- **kurtosis** = fourth standardized moment, NON-excess (normal = 3);
+  `excess-kurtosis` = kurtosis − 3.
+- **sample determinism**: numpy PCG64 (`np.random.default_rng(seed)`,
+  numpy ≥1.26,<2). `--seed` is REQUIRED; no implicit time source; the same
+  seed reproduces the same stream across runs and environments.
+- **validate** prints `true` on valid parameters; invalid parameters fail
+  with a typed `MathError` (e.g. `uniform requires low < high`). Missing
+  required parameters are `ArgumentError`.
+- **compare-moments** prints `true`/`false` comparing ONE moment
+  (`--moment` = mean|variance|stddev|skewness|kurtosis) of two families.
+- **describe** is deliberately rejected (it would emit structured output);
+  call `mean`/`variance`/`stddev` individually instead.
+- `ppf` requires q ∈ [0,1] (else `MathError`); `ppf(0)` on continuous
+  families renders `-inf`.
+- `cdf(ppf(p)) ≈ p` holds for representative probabilities (tested roundtrip).
+
+> **Warning: a distribution's mean matching another distribution does not
+> imply variance, tail behavior, modality, or other shape properties are
+> matched.** Beta(2,2) and Uniform(0,1) share mean 0.5 but have variances
+> 0.05 vs 1/12; Beta(4.05,4.05) has variance ≈ 0.02747252747, NOT 0.05.
+> Always verify shape moments separately via `compare-moments`.
+
+## assert — deterministic assertions
+
+```bash
+calc assert approx 0.5 0.4999999            # true — |a−e| ≤ atol + rtol·|e|; atol=rtol=1e-6 default
+calc assert approx 1 1.000001 --atol 1e-5   # true
+calc assert equal 1 1                       # true
+calc assert between 0.5 0 1                 # true — endpoints INCLUSIVE
+calc assert sign 0.35 positive              # true
+calc assert sign 0 zero                     # true
+calc assert abs-lt 0.01 0.05                # true — |a| < |b|
+calc assert abs-gt 0.10 0.05                # true — |a| > |b|
+```
+
+Sign names (exhaustive): `positive, negative, zero, nonnegative, nonpositive`.
+
+Failure is a domain failure: stdout stays empty, stderr is exactly one
+`AssertionError: description` line, exit code 1. Malformed calls (unknown
+sign, wrong operand count, `low > high` in between) are `ArgumentError`.
+
+---
+
 ## Error handling (self-correction protocol)
 
 On failure, parse the stderr prefix and adjust the call:
@@ -247,6 +335,7 @@ On failure, parse the stderr prefix and adjust the call:
 | `SyntaxError:` | unparseable expression, invalid JSON, invalid digit for base | fix quoting/format; matrices are JSON, not Python literals |
 | `ValueError:` | unknown unit or physical constant | use a standard unit string (e.g. `degC`) or known symbol |
 | `ArgumentError:` | missing/extra args, unknown operation/domain/symbol | provide exactly the required argument set |
+| `AssertionError:` | failed `assert` operation | the asserted claim is false; not a usage error |
 
 Always treat non-zero exit as failure; never depend on stderr when exit is 0
 (stderr is empty on success).

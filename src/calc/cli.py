@@ -15,10 +15,12 @@ from collections.abc import Sequence
 
 from calc.errors import ArgumentError, CalcError
 from calc.ops import (
+    assert_ops,
     base_ops,
     bits_ops,
     calculus_ops,
     datetime_ops,
+    distribution_ops,
     eval_ops,
     finance_ops,
     hash_ops,
@@ -58,9 +60,24 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "mean|median|mode|stdev|variance|pvariance|sum|min|max|count"
             "|geometric_mean|harmonic_mean"
+            "|covariance|pearson|spearman|regression|quantile|rank"
         ),
     )
-    p.add_argument("dataset", help="JSON array of numbers, e.g. '[1,2,3]'")
+    p.add_argument(
+        "datasets",
+        nargs="*",
+        help=(
+            "JSON array(s) of numbers: one for univariate ops, X and Y for "
+            "covariance|pearson|spearman|regression, plus a q value for quantile"
+        ),
+    )
+    p.add_argument("--ddof", type=int, default=0, help="covariance: 0 (default) or 1")
+    p.add_argument(
+        "--field",
+        default=None,
+        help="regression: slope|intercept|r2|stderr|slope_stderr|"
+        "residual_stderr|residual_variance",
+    )
 
     p = sub.add_parser(
         "finance",
@@ -213,6 +230,77 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--flags", default=None, help="flag letters, subset of i m s x a")
     p.add_argument("--flavor", default=None, help="regex flavor (v1: python only)")
 
+    p = sub.add_parser(
+        "distribution",
+        parents=[precision_parent],
+        help="distribution moments, pdf/cdf/ppf, sampling, validation, moment comparison",
+    )
+    p.add_argument(
+        "op",
+        help=(
+            "describe|mean|variance|stddev|skewness|kurtosis|excess-kurtosis"
+            "|pdf|cdf|ppf|sample|validate|compare-moments"
+        ),
+    )
+    p.add_argument(
+        "family",
+        help=("uniform|beta|normal|lognormal|exponential|gamma|binomial|poisson"),
+    )
+    p.add_argument(
+        "value",
+        nargs="?",
+        default=None,
+        help="pdf/cdf: evaluation point x; ppf: probability q",
+    )
+    p.add_argument(
+        "family2",
+        nargs="?",
+        default=None,
+        help=argparse.SUPPRESS,
+    )  # compare-moments second family (after options)
+    p.add_argument(
+        "--moment",
+        default="mean",
+        help="compare-moments: mean|variance|stddev|skewness|kurtosis",
+    )
+    for name, helptext in (
+        ("alpha", "beta: first shape"),
+        ("beta", "beta: second shape"),
+        ("mu", "normal/lognormal: mean (of the log for lognormal)"),
+        ("sigma", "normal/lognormal: standard deviation (of the log for lognormal)"),
+        ("low", "uniform: lower bound"),
+        ("high", "uniform: upper bound"),
+        ("lam", "poisson: rate"),
+        ("scale", "exponential/gamma: scale"),
+        ("shape", "gamma: shape"),
+        ("n", "binomial: trials (non-negative integer)"),
+        ("p", "binomial: success probability"),
+        ("x", "pdf/cdf: evaluation point (positional preferred)"),
+        ("q", "ppf: probability (positional preferred)"),
+        ("size", "sample: number of variates"),
+        ("seed", "sample: RNG seed (required)"),
+        ("alpha2", "second distribution: alpha"),
+        ("beta2", "second distribution: beta"),
+        ("mu2", "second distribution: mu"),
+        ("sigma2", "second distribution: sigma"),
+        ("low2", "second distribution: low"),
+        ("high2", "second distribution: high"),
+        ("lam2", "second distribution: lam"),
+        ("scale2", "second distribution: scale"),
+        ("shape2", "second distribution: shape"),
+        ("n2", "second distribution: n"),
+        ("p2", "second distribution: p"),
+    ):
+        p.add_argument(f"--{name}", type=float, default=None, help=helptext)
+
+    p = sub.add_parser(
+        "assert", parents=[precision_parent], help="deterministic assertions (stdout: true)"
+    )
+    p.add_argument("op", help="approx|equal|between|sign|abs-lt|abs-gt")
+    p.add_argument("values", nargs="+", help="numeric operands (sign: value + sign name)")
+    p.add_argument("--atol", type=float, default=1e-6, help="approx: absolute tolerance")
+    p.add_argument("--rtol", type=float, default=1e-6, help="approx: relative tolerance")
+
     return parser
 
 
@@ -240,7 +328,7 @@ def _parse_dynamic_kwargs(tokens: Sequence[str]) -> dict[str, float]:
 def _handlers() -> dict:
     return {
         "eval": lambda a: eval_ops.evaluate(a.expr),
-        "stat": lambda a: stat_ops.stat(a.op, a.dataset),
+        "stat": lambda a: stat_ops.stat_command(a.op, a.datasets, ddof=a.ddof, field=a.field),
         "finance": lambda a: finance_ops.finance(
             a.op,
             pv=a.pv,
@@ -269,6 +357,8 @@ def _handlers() -> dict:
         ),
         "datetime": lambda a: _datetime_handler(a),
         "regex": lambda a: _regex_handler(a),
+        "distribution": lambda a: distribution_ops.distribution_command(a),
+        "assert": lambda a: assert_ops.assert_command(a.op, a.values, atol=a.atol, rtol=a.rtol),
     }
 
 

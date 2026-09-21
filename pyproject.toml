@@ -23,6 +23,7 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     "pip-audit>=2.7",
+    "pytest-cov>=7.1.0",
 ]
 
 [tool.mypy]
@@ -38,6 +39,13 @@ line-length = 96
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "BLE"]
+
+[tool.coverage.run]
+parallel = true
+
+[tool.coverage.report]
+fail_under = 70
+show_missing = true
 
 [tool.uv]
 package = true

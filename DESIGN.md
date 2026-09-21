@@ -224,6 +224,61 @@ strings, stronger than goldens.
 
 ## 6. Spec gaps raised explicitly
 
+### 6a. Coverage measurement — sanctioned recipe (R1, 2026-09-21)
+
+The only sanctioned way to measure coverage in this repo is vera's F1 recipe:
+
+```sh
+# 1. Config must have parallel = true (pyproject.toml [tool.coverage.run]):
+#    subprocess children write uniquely-suffixed data files.
+# 2. Point children at the config so the subprocess tracer starts:
+COVERAGE_PROCESS_START=pyproject.toml uv run pytest -q --cov=src/calc
+# 3. Combine the parallel data files, then report:
+uv run coverage combine && uv run coverage report
+```
+
+(When `pytest --cov` writes the .coverage file itself, `coverage combine` has
+nothing to merge and exits 1 with "No data to combine" — that is harmless;
+the report inside the `--cov` run already includes the subprocess data.)
+
+Do NOT trust a plain `pytest --cov` number here: the contract tests spawn
+`calc` via `subprocess.run(["uv", "run", "calc", ...])`, and every spawned
+child inherits the parent's single `COVERAGE_FILE`, silently writing nothing —
+cli.py reports 0% and the CLI layer reads far below reality (measured: plain
+`--cov` → cli.py 0%, TOTAL 74%; recipe → cli.py 82%, TOTAL 92%). With the
+recipe above, measured numbers for the new/extended modules are cli.py 82%,
+assert_ops.py 87%, distribution_ops.py 93%, stat_ops.py 93%. The coverage
+gate is `fail_under = 70` (pyproject.toml); a recipe-less run will trip that
+gate loudly as the recipe regresses — that is the intended failure mode.
+Re-run the recipe before treating any percentage as a defect.
+
+### 6b. Stat extension (2026-09-21) — documented decisions
+
+The probability/statistics extension (spec
+`doc_fdfef6791813_calc-engine-extension-spec.md`) resolved its ambiguities as
+follows (all pinned by tests; full detail in SKILL.md):
+
+1. **`covariance` ddof**: population (ddof=0) default; `--ddof 1` for sample.
+2. **Tie handling**: average ranks, 1-based, in `rank` and `spearman`.
+3. **`quantile` interpolation**: NumPy `linear` method, h = (n-1)*q.
+4. **`regression` stderr naming**: `stderr` is an explicit alias of
+   `slope_stderr`; both exposed alongside `residual_stderr` and
+   `residual_variance` (SSR/(n-2)).
+5. **kurtosis**: non-excess (fourth standardized moment, normal = 3);
+   `excess-kurtosis` subtracts 3.
+6. **`describe`**: rejected with `ArgumentError` under the single-value
+   stdout contract; `mean`/`variance`/`stddev` are separate calls.
+7. **`compare-moments`**: boolean result (`true`/`false`) for exactly two
+   families and one `--moment`, honoring the one-value stdout contract.
+8. **Sampling**: numpy PCG64 via `default_rng(seed)`; `--seed` required.
+9. **New `AssertionError` stderr prefix** for failed `assert` operations
+   (a domain failure, exit 1, distinct from usage `ArgumentError`).
+
+Deferred (optional spec §17/§18, not implemented): `stat bootstrap` and
+statistical tests (`ks`, `mann-whitney`, `permutation`). §19
+(Sobol/Saltelli) remains explicitly out of scope.
+
+
 These are underspecified in the requirements doc; decisions proposed here, to
 be ratified before implementation:
 
