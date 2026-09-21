@@ -635,13 +635,13 @@ def _handlers() -> dict:
             a.algorithm,
             a.data,
             input_format=a.input,
-            raw_bytes=_resolved_bytes(a.data, a.max_input_bytes),
+            raw_bytes=_resolved_bytes(a.data, a.max_input_bytes, a.input),
         ),
         "crc": lambda a: hash_ops.crc_digest(
             a.variant,
             a.data,
             input_format=a.input,
-            raw_bytes=_resolved_bytes(a.data, a.max_input_bytes),
+            raw_bytes=_resolved_bytes(a.data, a.max_input_bytes, a.input),
         ),
         "base64": lambda a: hash_ops.base64_code(
             a.op,
@@ -667,20 +667,35 @@ def _source_path(token: str) -> str | None:
     return None
 
 
-def _resolved_bytes(token: str, max_input_bytes: int | None) -> bytes | None:
+def _resolved_bytes(
+    token: str, max_input_bytes: int | None, input_format: str | None = None
+) -> bytes | None:
     """Resolve a hash/crc/base64 data token to raw bytes when it is a file/stdin ref.
 
     Returns ``None`` when the token is not a file reference (``@<path>`` /
     ``@-`` / ``@@`` escape); the op then handles it as text/hex as before.
+
+    Issue 9: ``--input hex`` combined with ``@file``/``@-``/``@@`` is
+    rejected (silent precedence — hashing one byte stream while the hex flag
+    is ignored — is the worst outcome for an agent recording evidence). The
+    ``@@`` escape without the flag keeps its R1 behavior: it resolves to the
+    literal text bytes (never a file read).
     """
-    if token.startswith("@"):
-        cap = (
-            max_input_bytes
-            if max_input_bytes is not None
-            else DEFAULT_MAX_INPUT_BYTES
+    if not token.startswith("@"):
+        return None
+    if input_format == "hex":
+        raise ArgumentError(
+            "--input hex cannot be combined with @file (file bytes are hashed "
+            "raw); use --input hex only with inline hex"
         )
-        return resolve_token(token, binary=True, max_bytes=cap)  # type: ignore[return-value]
-    return None
+    if token.startswith("@@"):
+        return ("@" + token[2:]).encode("utf-8")
+    cap = (
+        max_input_bytes
+        if max_input_bytes is not None
+        else DEFAULT_MAX_INPUT_BYTES
+    )
+    return resolve_token(token, binary=True, max_bytes=cap)  # type: ignore[return-value]
 
 
 def _regex_handler(a: argparse.Namespace) -> object:

@@ -427,8 +427,9 @@ argument — pattern and replacement are always literal); data argument of
 stripping; `base64 decode` re-encodes as text). Read-only; regular files
 only; default cap
 16 MiB, override with `--max-input-bytes N`. Only one `@-` per invocation.
-`--input hex` combined with `@file`: **the `@file` raw bytes take precedence**
-(the file's bytes are hashed as-is, not parsed as hex).
+`--input hex` combined with `@file`/`@-` is an `ArgumentError` — file bytes
+are always hashed raw and the flag is never silently ignored; use
+`--input hex` only with inline hex.
 
 ```bash
 printf '[1,2,3,4]' | calc stat mean @-      # 2.5000

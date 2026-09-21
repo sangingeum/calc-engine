@@ -283,6 +283,8 @@ calc endian from-bytes 78563412 --order little            # 305419896
 ### hash — digests
 
 Default input is UTF-8 text; `--input hex` treats it as raw bytes.
+`@file`/`@-` data is always hashed as raw file bytes; combining it with
+`--input hex` is an `ArgumentError` (never a silent precedence).
 
 ```bash
 calc hash sha256 hello              # 2cf24dba5fb0...b9824
