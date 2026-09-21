@@ -10,6 +10,7 @@ Contract (DESIGN.md 1):
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from collections.abc import Sequence
 
@@ -35,6 +36,11 @@ from calc.ops import (
     vector_ops,
 )
 from calc.render import render
+
+# Tokens shaped like a registered-style long option (`--foo`, `--foo=1`).
+# Used by _normalize_positionals: an *unregistered* such token is a typo, not
+# a positional (GitHub issue 6), so it is left for argparse to reject.
+_LONG_OPTION_PATTERN = re.compile(r"^--[A-Za-z][\w-]*(=.*)?$")
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -382,6 +388,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default="mean",
         help="compare-moments: mean|variance|stddev|skewness|kurtosis",
     )
+    p.add_argument(
+        "--family2",
+        dest="family2_opt",
+        default=None,
+        help="compare-moments: second family (explicit preferred form)",
+    )
     for name, helptext in (
         ("alpha", "beta: first shape"),
         ("beta", "beta: second shape"),
@@ -485,7 +497,7 @@ def _subparser_option_map(
 
 def _normalize_positionals(
     argv: list[str], option_map: dict[tuple[str, str], argparse.Action]
-) -> list[str]:
+) -> tuple[list[str], list[str]]:
     """R2: move leading-dash positionals past ``--`` so argparse accepts them.
 
     argv[0] must be the subcommand (argparse requires it). Tokens after it are
@@ -497,11 +509,17 @@ def _normalize_positionals(
     remainder positional verbatim. If everything is already option-first with
     no leading-dash positional, argv is returned unchanged.
 
+    Returns ``(rebuilt_argv, stray_option_tokens)``. The strays are the
+    unregistered long options parked by the issue-6 rule plus their consumed
+    values, in original order; the caller reports them verbatim in the
+    ``unrecognized arguments`` error (argparse alone would drop the value
+    token into a spare positional slot).
+
     Like ``_subparser_option_map``, this depends on the option map built from
     argparse's private ``_actions`` (see the note there).
     """
     if not argv or argv[0] not in {c for (c, _) in option_map}:
-        return argv
+        return argv, []
     cmd = argv[0]
     tokens = argv[1:]
     options: list[str] = []
@@ -509,6 +527,7 @@ def _normalize_positionals(
     i = 0
     saw_double_dash = False
     needs_fix = False
+    strays: list[str] = []
     while i < len(tokens):
         token = tokens[i]
         if not saw_double_dash and token == "--":
@@ -536,14 +555,38 @@ def _normalize_positionals(
                     i += 1
             i += 1
             continue
+        # A token shaped like a long option that is NOT registered is a typo,
+        # never a positional (issue 6): parking it with the options (in front
+        # of any ``--`` rebuild) makes argparse report it via ``unrecognized
+        # arguments``. Only an explicit user ``--`` separator forces such
+        # tokens into positional territory. Single-dash tokens (`-2+5`,
+        # `-abc`, `-x`) keep the R2 behavior.
+        if not saw_double_dash and _LONG_OPTION_PATTERN.match(token):
+            options.append(token)
+            strays.append(token)
+            needs_fix = True  # force the rebuild: keep the stray out of the positional tail
+            # An unregistered long option carries its value with it (issue 6):
+            # `--foo 3` must be reported whole, never let `3` fall through as
+            # a positional that spare nargs="?" slots could swallow.
+            if (
+                i + 1 < len(tokens)
+                and not _LONG_OPTION_PATTERN.match(tokens[i + 1])
+                and not tokens[i + 1].startswith("--")
+                and option_map.get((cmd, tokens[i + 1])) is None
+            ):
+                options.append(tokens[i + 1])
+                strays.append(tokens[i + 1])
+                i += 1
+            i += 1
+            continue
         # positional: leading-dash non-options are the R2 hazard
         if token.startswith("-") and len(token) > 1:
             needs_fix = True
         positionals.append(token)
         i += 1
     if not needs_fix:
-        return argv
-    return [cmd, *options, "--", *positionals]
+        return argv, []
+    return [cmd, *options, "--", *positionals], strays
 
 
 def _handlers() -> dict:
@@ -758,9 +801,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     argv = list(sys.argv[1:]) if argv is None else list(argv)
     argv, physics_kwargs = _extract_physics_kwargs(argv)
     parser = _build_parser()
-    argv = _normalize_positionals(argv, _subparser_option_map(parser))
+    argv, stray_options = _normalize_positionals(argv, _subparser_option_map(parser))
     args, unknown = parser.parse_known_args(argv)
     try:
+        # Issue 6: strays parked by _normalize_positionals are reported here,
+        # verbatim and whole (`--foo 3`), before argparse's own leftovers.
+        if stray_options:
+            unknown = [*stray_options, *unknown]
         if unknown:
             raise ArgumentError(f"unrecognized arguments: {' '.join(unknown)}")
         if getattr(args, "exact", False) and getattr(args, "precision", None) is not None:

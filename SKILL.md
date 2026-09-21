@@ -310,8 +310,10 @@ calc distribution ppf beta 0.5 --alpha 2 --beta 2        # 0.5000 (positional q;
 calc distribution validate beta --alpha 2 --beta 2       # true
 calc distribution sample beta --alpha 2 --beta 2 --size 5 --seed 123
                                                          # [0.1486,0.7646,0.4182,0.5289,0.7776]
+calc distribution compare-moments beta --alpha 2 --beta 2 --family2 uniform --low2 0 --high2 1 --moment mean
+                                                         # true (preferred explicit form)
 calc distribution compare-moments beta --alpha 2 --beta 2 uniform --low 0 --high 1 --moment mean
-                                                         # true
+                                                         # true (positional form also accepted)
 ```
 
 Definitions and conventions (pinned by tests):
@@ -331,6 +333,17 @@ Definitions and conventions (pinned by tests):
   required parameters are `ArgumentError`.
 - **compare-moments** prints `true`/`false` comparing ONE moment
   (`--moment` = mean|variance|stddev|skewness|kurtosis) of two families.
+  Preferred form: `compare-moments <fam1> <fam1 params> --family2 <fam2>
+  <fam2 params with *2 suffixes> --moment <m>`; the positional form
+  (`... <fam1 params> <fam2> <fam2 unsuffixed params>`) is also accepted.
+  compare-moments is the ONLY distribution op that accepts parameters of two
+  families at once. Every other op rejects a parameter that does not belong
+  to the chosen family: `distribution mean normal --mu 0 --sigma 1 --alpha 3`
+  → `ArgumentError: --alpha is not a parameter of normal`.
+- **unknown `--flags` are rejected on every subcommand**:
+  `ArgumentError: unrecognized arguments: <tokens>` (exit 1). A mistyped
+  option can never silently change the computation. An explicit `--`
+  separator still forces its operands to be taken literally as positionals.
 - **describe** is deliberately rejected (it would emit structured output);
   call `mean`/`variance`/`stddev` individually instead.
 - `ppf` requires q ∈ [0,1] (else `MathError`); `ppf(0)` on continuous

@@ -63,6 +63,44 @@ _PARAM_KEYS = (
     "b",
 )
 
+# Parameters belonging to each family (issue 6 tightening): every
+# ``distribution`` op EXCEPT compare-moments rejects a supplied parameter
+# that is not a member of the chosen family's set.
+_FAMILY_PARAMS: dict[str, frozenset[str]] = {
+    "uniform": frozenset({"low", "high"}),
+    "beta": frozenset({"alpha", "beta"}),
+    "normal": frozenset({"mu", "sigma"}),
+    "lognormal": frozenset({"mu", "sigma"}),
+    "exponential": frozenset({"scale"}),
+    "gamma": frozenset({"shape", "scale"}),
+    "binomial": frozenset({"n", "p"}),
+    "poisson": frozenset({"lam"}),
+    "t": frozenset({"df"}),
+    "chi2": frozenset({"df"}),
+    "kumaraswamy": frozenset({"a", "b"}),
+}
+
+# Operation-level extras (x/q/size/seed, fit --mean/--variance/--field,
+# compare-moments --moment) are not family parameters and are exempt.
+
+
+def _reject_foreign_params(family: str, args: types.SimpleNamespace) -> None:
+    """Reject parameters that do not belong to ``family`` (issue 6 tightening).
+
+    On single-family ops (everything except compare-moments, which never
+    reaches this check): a supplied parameter outside the family's set is
+    rejected, and any second-family (``*2``) parameter is foreign by
+    definition. Raises ``ArgumentError: --X is not a parameter of <family>``.
+    """
+    allowed = _FAMILY_PARAMS[family]
+    for key in _PARAM_KEYS:
+        value = getattr(args, key, None)
+        if value is not None and key not in allowed:
+            raise ArgumentError(f"--{key} is not a parameter of {family}")
+        value2 = getattr(args, key + "2", None)
+        if value2 is not None:
+            raise ArgumentError(f"--{key}2 is not a parameter of {family}")
+
 
 class _Params:
     """Validated parameter set for one family."""
@@ -312,7 +350,7 @@ def distribution_command(args: types.SimpleNamespace) -> str | float | list[floa
     # a family token there so both flag placements work:
     #   ... beta --alpha 2 --beta 2 uniform --low2 0 --high2 1
     #   ... beta --alpha 2 --beta 2 --moment mean uniform --low2 0 --high2 1
-    fam2_token = args.family2
+    fam2_token = getattr(args, "family2_opt", None) or args.family2
     if fam2_token is None and args.value is not None and args.value in _FAMILIES:
         fam2_token = args.value
     if fam2_token is not None:
@@ -326,6 +364,9 @@ def distribution_command(args: types.SimpleNamespace) -> str | float | list[floa
         )
     op = args.op
     if op == "compare-moments":
+        # Exempt from the foreign-parameter tightening: the two families'
+        # parameters coexist here (unsuffixed + *2, plus the spec-style
+        # unsuffixed fallback for the second family's params below).
         if len(families) != 2:
             raise ArgumentError("compare-moments takes exactly 2 families")
         fam2 = families[1]
@@ -357,6 +398,10 @@ def distribution_command(args: types.SimpleNamespace) -> str | float | list[floa
         return "true" if math.isclose(m1, m2, rel_tol=1e-12, abs_tol=1e-12) else "false"
 
     params = _build_params(family, args)
+    # Issue 6 tightening: reject parameters that do not belong to the chosen
+    # family (both unsuffixed and *2 forms) for every op except
+    # compare-moments (handled above, exempt).
+    _reject_foreign_params(family, args)
     if op == "validate":
         return _validate(params)
     if op in ("mean", "variance", "stddev", "skewness", "kurtosis", "excess-kurtosis"):

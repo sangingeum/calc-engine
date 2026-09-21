@@ -102,8 +102,10 @@ calc distribution ppf beta 0.5 --alpha 2 --beta 2       # 0.5000  (positional q,
 calc distribution validate beta --alpha 2 --beta 2      # true
 calc distribution sample beta --alpha 2 --beta 2 --size 5 --seed 123
                                                         # [0.1486,0.7646,0.4182,0.5289,0.7776]
+calc distribution compare-moments beta --alpha 2 --beta 2 --family2 uniform --low2 0 --high2 1 --moment mean
+                                                        # true (preferred explicit form)
 calc distribution compare-moments beta --alpha 2 --beta 2 uniform --low 0 --high 1 --moment mean
-                                                        # true
+                                                        # true (positional form also accepted)
 ```
 
 - `kurtosis` is non-excess (fourth standardized moment, normal = 3);
@@ -111,7 +113,13 @@ calc distribution compare-moments beta --alpha 2 --beta 2 uniform --low 0 --high
 - `sample` uses numpy's PCG64 via `default_rng(seed)`; `--seed` is required,
   no implicit time source. Same seed → same stream across runs/environments.
 - `compare-moments` prints `true`/`false` for one moment (`--moment` =
-  mean|variance|stddev|skewness|kurtosis) of two families.
+  mean|variance|stddev|skewness|kurtosis) of two families. Preferred form:
+  `--family2 <fam> <fam params with *2 suffixes>`; the positional form is
+  also accepted. It is the only distribution op accepting two families'
+  parameters; every other op rejects a foreign parameter
+  (`ArgumentError: --alpha is not a parameter of normal`).
+- Unknown `--flags` are rejected on every subcommand:
+  `ArgumentError: unrecognized arguments: <tokens>` (exit 1).
 - `describe` is intentionally rejected under the single-value stdout
   contract — use `mean`/`variance`/`stddev` separately.
 - Invalid parameters are typed `MathError` domain failures; missing
