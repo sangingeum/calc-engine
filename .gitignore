@@ -1,20 +1,8 @@
-# Python
+.coverage
+*.coverage
+htmlcov/
 __pycache__/
-*.py[cod]
-*.egg-info/
-dist/
-build/
-
-# Virtual environments
+*.pyc
 .venv/
-venv/
-
-# Test / tooling caches
+*.egg-info/
 .pytest_cache/
-.mypy_cache/
-.ruff_cache/
-
-# Editors
-.idea/
-.vscode/
-*.swp
