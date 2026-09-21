@@ -42,7 +42,7 @@ def _build_parser() -> argparse.ArgumentParser:
     precision_parent.add_argument(
         "--precision",
         type=int,
-        default=4,
+        default=None,  # sentinel: None = flag absent (presence checked by R11 guard)
         help="decimal places for float output (default: 4)",
     )
 
@@ -763,7 +763,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if unknown:
             raise ArgumentError(f"unrecognized arguments: {' '.join(unknown)}")
-        if getattr(args, "exact", False) and getattr(args, "precision", None) != 4:
+        if getattr(args, "exact", False) and getattr(args, "precision", None) is not None:
+            # R11: --exact and --precision are mutually exclusive regardless of
+            # the precision value (the 4 default must be rejected too, so the
+            # check is on presence, not on != 4). The precision_parent parser
+            # always sets the attribute; it is None only where --precision
+            # does not exist (physics suppresses it, defaults are explicit).
             raise ArgumentError("--exact cannot be combined with --precision")
         args.kwargs = physics_kwargs
         _resolve_cli_inputs(args)
@@ -771,7 +776,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         # Rendering/printing sit INSIDE the defensive handler: a render failure
         # (e.g. the CPython int→str limit on a huge --exact Fraction) must
         # still emit exactly one typed stderr line (INV-2), never a traceback.
-        print(render(result, args.precision))
+        print(render(result, args.precision if args.precision is not None else 4))
     except CalcError as exc:
         print(f"{type(exc).prefix}: {exc}", file=sys.stderr)
         return 1

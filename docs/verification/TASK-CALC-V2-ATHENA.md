@@ -87,3 +87,14 @@ Post-fix verification: full fresh `uv run pytest -q` → **531 passed, 0 failed*
 (527 + 4 new: kumaraswamy skewness pin, glued-option regression, INV-2
 one-line regression, base64 non-UTF-8 typed error). ruff clean, mypy clean
 (26 files), pip-audit clean.
+
+---
+
+## Fix round 2 (vera gate TASK-CALC-V2-VERA.md — OVERALL PASS, finding F1)
+
+| Finding | Disposition |
+|---|---|
+| F1 (minor, non-blocking): `eval "1/2" --exact --precision 4` printed `1/2` exit 0; R11 mandates `--exact` + `--precision` ⇒ ArgumentError, but the guard only rejected `precision != 4` so the default slipped through | FIXED: the `--precision` argparse default changed to a `None` sentinel (absence = flag not passed; render applies 4 when None), and the R11 guard now rejects any non-None `--precision` together with `--exact`. Verified: default-4, explicit 6, and glued `--precision=4` forms all raise `ArgumentError: --exact cannot be combined with --precision` (exit 1, stdout empty); `--exact` alone still works. Regression test `test_r11_exact_plus_precision_always_rejected` pins all four cases. |
+
+Post-fix verification: full fresh `uv run pytest -q` → **532 passed, 0 failed**
+(531 + 1 new F1 regression test). ruff clean, mypy clean (26 files).

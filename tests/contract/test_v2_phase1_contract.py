@@ -119,6 +119,32 @@ def test_inv2_huge_exact_result_one_typed_line():
     assert proc.stderr.startswith("MathError: "), proc.stderr
 
 
+def test_r11_exact_plus_precision_always_rejected():
+    """Vera F1: --exact + --precision is an ArgumentError regardless of value.
+
+    The original guard only rejected precision != 4, so the *default* value
+    slipped through: `eval "1/2" --exact --precision 4` printed 1/2. Spec R11:
+    any --precision together with --exact is an ArgumentError.
+    """
+    proc = run_calc("eval", "1/2", "--exact", "--precision", "4")
+    assert proc.returncode == 1
+    assert proc.stdout == ""
+    assert proc.stderr.startswith("ArgumentError: --exact cannot be combined"), proc.stderr
+    assert proc.stderr.count("\n") == 1
+    # non-default values were already rejected; keep both pinned
+    proc = run_calc("eval", "1/2", "--exact", "--precision", "6")
+    assert proc.returncode == 1
+    assert proc.stderr.startswith("ArgumentError: --exact cannot be combined")
+    # glued form too
+    proc = run_calc("eval", "1/2", "--exact", "--precision=4")
+    assert proc.returncode == 1
+    assert proc.stderr.startswith("ArgumentError: --exact cannot be combined")
+    # and --exact alone still works
+    proc = run_calc("eval", "1/2", "--exact")
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == "1/2\n"
+
+
 def test_r3_base64_decode_non_utf8_file_typed_error(tmp_path):
     """Solomon fix-round: non-UTF-8 @file on decode -> typed ArgumentError."""
     f = tmp_path / "bad.b64"
