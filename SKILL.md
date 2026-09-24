@@ -1,6 +1,6 @@
 ---
 name: calc-engine
-description: Deterministic `calc` CLI math engine for AI agents — zero-chat stdout, typed stderr errors, 21 subcommands (eval, stat, finance, matrix, convert-base, convert-unit, calculus, physics-constant, physics, vector, bits, endian, hash, crc, base64, datetime, regex, distribution, assert, gof, sym). Use whenever an agent needs safe computation or statistical/probabilistic verification offloaded to a subprocess.
+description: Deterministic `calc` CLI math engine for AI agents — zero-chat stdout, typed stderr errors, 22 subcommands (eval, batch, stat, finance, matrix, convert-base, convert-unit, calculus, physics-constant, physics, vector, bits, endian, hash, crc, base64, datetime, regex, distribution, assert, gof, sym). Use whenever an agent needs safe computation or statistical/probabilistic verification offloaded to a subprocess.
 ---
 
 # calc — CLI math engine for agents
@@ -55,6 +55,32 @@ calc eval "factorial(10)"                    # 3628800
 calc eval "erf(1)" --precision 6             # 0.842701
 calc eval "gamma(5)"                         # 24
 calc eval "comb(5,2)"                        # 10
+```
+
+**Compound calculations (two or more steps)**: `eval` accepts multiple
+statements — expressions or `name = expr` assignments. Variables persist
+across statements; assignments print nothing; one expression result prints
+bare, two or more print `N: value` with the 1-based statement index. A failing
+statement prints `N: ErrorType: description` in its slot without aborting the
+rest (exit 1). `--precision` applies only when rendering, never to stored
+variables. **For any calculation with two or more steps, use a single compound
+call.**
+
+```bash
+calc eval 'price=12500' 'qty=37' 'subtotal=price*qty' 'subtotal*1.1' --precision 2
+# 508750.00  (single expression result prints bare)
+```
+
+For long chains, `calc batch` reads newline-separated statements from stdin
+(blank lines and `#` comments ignored):
+
+```bash
+calc batch <<'EOF'
+price = 12500
+qty = 37
+subtotal = price * qty
+subtotal * 1.1
+EOF
 ```
 
 **Variables with `--let`** (repeatable): `calc eval "a*b" --let a=2 --let b=3`
@@ -493,7 +519,8 @@ infinity) return sympy-style strings, e.g. `x**3/3`.
 ## Notes for agent callers
 
 - Pass matrices/vectors/datasets as **strict JSON** strings; quote them.
-- `eval` has no variables other than `pi`/`tau`/`e` — no `x` in eval
-  (use `calculus` with `--var` for symbolic work).
+- `eval` has no built-in variables other than `pi`/`tau`/`e` — no free `x` in
+  eval (use `calculus` with `--var` for symbolic work); assignment statements
+  bind variables within one invocation only.
 - `convert-base` is integer-only; fractional input is a `MathError`.
 - `stat mode` on multimodal data returns the first mode only.

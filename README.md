@@ -28,11 +28,18 @@ uv tool install --editable .
 ```bash
 calc eval "2+2"                     # 4
 calc eval "sqrt(2)" --precision 6   # 1.414214
+calc eval 'price=12500' 'qty=37' 'price*qty'   # 462500
 ```
 
 Safe evaluation via `simpleeval` (no Python `eval`/`exec`). Supported
 functions include `sqrt, sin, cos, tan, log, log2, log10, exp, floor, ceil,
 fabs, factorial, gcd, lcm, hypot, pow, ...`; constants `pi`, `tau`, `e`.
+Multiple statements (expressions or `name = expr` assignments) may be passed
+to one `eval` call — variables persist across statements, assignments print
+nothing, and two or more expression results print as `N: value` lines. For any
+calculation with two or more steps, use a single compound call. Long chains
+can also be piped to `calc batch` (one statement per line on stdin; blank
+lines and `#` comments ignored).
 
 ### stat — statistics
 

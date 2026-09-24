@@ -11,10 +11,11 @@ import math
 import operator
 import re
 from fractions import Fraction
+from typing import NamedTuple
 
 from simpleeval import simple_eval
 
-from calc.errors import ArgumentError, MathError, SyntaxError_
+from calc.errors import ArgumentError, CalcError, MathError, SyntaxError_
 
 _NAMES = {"pi": math.pi, "tau": math.tau, "e": math.e}
 
@@ -132,6 +133,18 @@ def _parse_let_bindings(bindings: list[str] | None) -> dict[str, float]:
     return names
 
 
+def _eval_with_names(expr: str, names: dict[str, object]) -> int | float:
+    """Evaluate one expression against a shared names dict (compound chains)."""
+    try:
+        return simple_eval(expr, functions=_FUNCTIONS, names=names)
+    except ZeroDivisionError as exc:
+        raise MathError(str(exc)) from None
+    except (ValueError, OverflowError) as exc:
+        raise MathError(str(exc)) from None
+    except Exception as exc:  # noqa: BLE001 — simpleeval raises many types; all mean SyntaxError
+        raise SyntaxError_(f"invalid expression: {exc}") from None
+
+
 def evaluate(
     expr: str,
     *,
@@ -141,16 +154,155 @@ def evaluate(
     """Evaluate an arithmetic expression safely; returns int or float."""
     if exact:
         return _evaluate_exact(expr)
-    names = dict(_NAMES)
+    names: dict[str, object] = dict(_NAMES)
     names.update(_parse_let_bindings(let_bindings))
-    try:
-        return simple_eval(expr, functions=_FUNCTIONS, names=names)
-    except ZeroDivisionError as exc:
-        raise MathError(str(exc)) from None
-    except (ValueError, OverflowError) as exc:
-        raise MathError(str(exc)) from None
-    except Exception as exc:  # noqa: BLE001 — simpleeval raises many types; all mean SyntaxError
-        raise SyntaxError_(f"invalid expression: {exc}") from None
+    return _eval_with_names(expr, names)
+
+
+# ---------------------------------------------------------------------------
+# Compound calculations: multiple statements in one invocation
+# ---------------------------------------------------------------------------
+
+
+class CompoundEvalOutput(NamedTuple):
+    """Structured stdout of a compound/batch invocation (rendered by cli.py).
+
+    Each entry is ``(statement_index, kind, payload)``: kind ``"error"`` has a
+    fully formatted ``ErrorType: description`` payload; kind ``"value"`` /
+    ``"indexed"`` carry the raw result (full precision; ``--precision`` applies
+    only at render time, and ``"indexed"`` lines print the 1-based statement
+    index as a prefix).
+    """
+
+    entries: tuple[tuple[int, str, object], ...]
+    had_error: bool
+
+
+def _split_assignment(statement: str) -> tuple[str, str] | None:
+    """Split ``name = expr`` at the first standalone ``=``.
+
+    Returns ``(name, rhs)`` or ``None`` when the statement is a pure
+    expression. Quote-aware; ``==`` ``<=`` ``>=`` ``!=`` never split.
+    """
+    quote: str | None = None
+    i = 0
+    while i < len(statement):
+        char = statement[i]
+        if quote:
+            if char == quote:
+                quote = None
+        elif char in "'\"":
+            quote = char
+        elif char == "=":
+            if i + 1 < len(statement) and statement[i + 1] == "=":
+                i += 2
+                continue
+            if i > 0 and statement[i - 1] in "<>!":
+                i += 1
+                continue
+            return statement[:i], statement[i + 1 :]
+        i += 1
+    return None
+
+
+def _bind_assignment(name_raw: str, value: object, names: dict[str, object]) -> None:
+    """Validate an assignment target and store the result at full precision."""
+    name = name_raw.strip()
+    if not _IDENT_PATTERN.match(name):
+        raise ArgumentError(f"invalid assignment target: {name_raw.strip()!r}")
+    if name in _FUNCTIONS or name in _NAMES:
+        raise ArgumentError(f"assignment shadows a function/constant: {name!r}")
+    names[name] = value
+
+
+def _run_compound(
+    statements: list[str],
+    *,
+    let_bindings: list[str] | None = None,
+    exact: bool = False,
+) -> CompoundEvalOutput:
+    """Evaluate dependent statements in one invocation (shared semantics).
+
+    - assignments store their result in the shared names dict, print nothing;
+    - a single expression statement prints its bare value (backward compat);
+    - two or more expression statements print ``N: value`` with a 1-based
+      statement index (assignments included in the numbering);
+    - a failing statement prints ``N: ErrorType: description`` in its slot and
+      does not abort the rest; exit is 1 when anything failed;
+    - full internal precision between statements; ``--precision`` applies only
+      at render time (cli.py renders the stored values).
+    """
+    if exact and (
+        len(statements) > 1 or any(_split_assignment(s) for s in statements)
+    ):
+        raise ArgumentError(
+            "--exact supports exactly one expression statement (no assignments)"
+        )
+    names: dict[str, object] = dict(_NAMES)
+    names.update(_parse_let_bindings(let_bindings))
+    # values/errors are kept raw so rendering happens once, at the end
+    evaluated: list[tuple[int, object]] = []
+    expression_count = 0
+    for index, statement in enumerate(statements, 1):
+        assignment = _split_assignment(statement)
+        try:
+            if assignment is None:
+                expression_count += 1
+                evaluated.append((index, _eval_with_names(statement, names)))
+            else:
+                target, rhs = assignment
+                value = _eval_with_names(rhs, names)
+                _bind_assignment(target, value, names)
+                evaluated.append((index, None))
+        except CalcError as exc:
+            evaluated.append((index, exc))
+    entries: list[tuple[int, str, object]] = []
+    had_error = False
+    for index, outcome in evaluated:
+        if isinstance(outcome, CalcError):
+            had_error = True
+            entries.append((index, "error", f"{type(outcome).prefix}: {outcome}"))
+        elif outcome is not None:
+            # a single expression statement keeps the bare-value contract;
+            # otherwise the line carries its 1-based statement index
+            kind = "indexed" if expression_count > 1 else "value"
+            entries.append((index, kind, outcome))
+    return CompoundEvalOutput(tuple(entries), had_error)
+
+
+def parse_statements(text: str) -> list[str]:
+    """Split stdin text into statements; blank lines and # comments ignored."""
+    statements = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        statements.append(line)
+    return statements
+
+
+def eval_command(
+    statements: list[str],
+    *,
+    let_bindings: list[str] | None = None,
+    exact: bool = False,
+) -> object:
+    """Entry for ``calc eval``/``calc batch``: one value, or a compound output."""
+    if len(statements) == 1:
+        assignment = _split_assignment(statements[0])
+        if assignment is None:
+            # single expression: byte-exact legacy contract (raises on error)
+            return evaluate(statements[0], let_bindings=let_bindings, exact=exact)
+        if exact:
+            raise ArgumentError(
+                "--exact supports exactly one expression statement (no assignments)"
+            )
+        names: dict[str, object] = dict(_NAMES)
+        names.update(_parse_let_bindings(let_bindings))
+        target, rhs = assignment
+        _bind_assignment(target, _eval_with_names(rhs, names), names)
+        return CompoundEvalOutput((), False)
+    return _run_compound(statements, let_bindings=let_bindings, exact=exact)
 
 
 # ---------------------------------------------------------------------------

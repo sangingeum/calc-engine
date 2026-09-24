@@ -68,7 +68,14 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     p = sub.add_parser("eval", parents=[precision_parent], help="evaluate a math expression")
-    p.add_argument("expr", help="expression, e.g. '2+2' or 'sqrt(2)'")
+    p.add_argument(
+        "exprs",
+        nargs="+",
+        help=(
+            "one or more statements: an expression ('2+2', 'sqrt(2)') or an "
+            "assignment ('name = expr'); variables persist across statements"
+        ),
+    )
     p.add_argument(
         "--let",
         action="append",
@@ -80,6 +87,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "--exact",
         action="store_true",
         help="exact rational arithmetic (Fraction); prints an integer or p/q",
+    )
+
+    p = sub.add_parser(
+        "batch",
+        parents=[precision_parent, max_input_parent],
+        help="evaluate multiple newline-separated statements from stdin",
     )
 
     p = sub.add_parser(
@@ -594,12 +607,25 @@ def _normalize_positionals(
     return [cmd, *options, "--", *positionals], strays
 
 
+def _batch_statements(max_input_bytes: int | None) -> list[str]:
+    """Read `calc batch` statements from stdin (blank lines / # comments dropped)."""
+    cap = max_input_bytes if max_input_bytes is not None else DEFAULT_MAX_INPUT_BYTES
+    text = resolve_token("@-", binary=False, max_bytes=cap)
+    statements = eval_ops.parse_statements(str(text))
+    if not statements:
+        raise ArgumentError("batch: no statements on stdin")
+    return statements
+
+
 def _handlers() -> dict:
     return {
-        "eval": lambda a: eval_ops.evaluate(
-            a.expr,
+        "eval": lambda a: eval_ops.eval_command(
+            a.exprs,
             let_bindings=a.let,
             exact=getattr(a, "exact", False),
+        ),
+        "batch": lambda a: eval_ops.eval_command(
+            _batch_statements(a.max_input_bytes),
         ),
         "stat": lambda a: stat_ops.stat_command(
             a.op,
@@ -855,6 +881,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.kwargs = physics_kwargs
         _resolve_cli_inputs(args)
         result = _handlers()[args.command](args)
+        if isinstance(result, eval_ops.CompoundEvalOutput):
+            # Compound eval/batch: statements render line by line; assignments
+            # print nothing; a failing statement keeps its slot on stdout.
+            precision = args.precision if args.precision is not None else 4
+            for index, kind, payload in result.entries:
+                if kind == "error":
+                    print(f"{index}: {payload}")
+                elif kind == "indexed":
+                    print(f"{index}: {render(payload, precision)}")
+                else:
+                    print(render(payload, precision))
+            return 1 if result.had_error else 0
         # Rendering/printing sit INSIDE the defensive handler: a render failure
         # (e.g. the CPython int→str limit on a huge --exact Fraction) must
         # still emit exactly one typed stderr line (INV-2), never a traceback.
