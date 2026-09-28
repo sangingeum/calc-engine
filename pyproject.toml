@@ -4,7 +4,8 @@ version = "0.1.0"
 description = "Deterministic, subcommand-driven CLI math engine for AI agents"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
     "simpleeval>=0.9.13",
     "numpy>=1.26,<2",
