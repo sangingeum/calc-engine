@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   test:
-    name: pytest, ruff, mypy (Python 3.11)
+    name: pytest, ruff, mypy (Python 3.12)
     runs-on: ubuntu-latest
     steps:
       - name: Check out
@@ -21,8 +21,12 @@ jobs:
         with:
           enable-cache: true
 
+      # 3.12 is the typing target declared by [tool.mypy] python_version, and
+      # the interpreter the locked dev environment resolves pint 0.26.1 for;
+      # on 3.11 the lock resolves pint 0.25.3, which has no usable annotation
+      # for pint.UnitRegistry and makes `mypy src` fail.
       - name: Set up Python
-        run: uv python install 3.11
+        run: uv python install 3.12
 
       - name: Install dependencies
         run: uv sync --locked
