@@ -29,14 +29,14 @@ Safe evaluation via `simpleeval` (no Python `eval`/`exec`). Standard
 arithmetic operators (`+ - * / // % **`), comparison (`< <= > >= == !=`),
 and boolean (`and or not`) operators all work.
 
-**Functions — the exhaustive list (40):**
+**Functions — the exhaustive list (41):**
 
 | Category | Functions |
 |---|---|
 | roots/power | `sqrt`, `cbrt`, `isqrt` (integer sqrt), `pow` |
 | trigonometry | `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2` |
 | hyperbolic | `sinh`, `cosh`, `tanh` |
-| logarithms | `log` (natural; `log(x, base)` two-arg), `log2`, `log10`, `log1p` |
+| logarithms | `log` (natural; `log(x, base)` two-arg), `ln` (natural-log alias of `log`), `log2`, `log10`, `log1p` |
 | exponential | `exp`, `expm1` |
 | rounding | `floor`, `ceil`, `trunc`, `fabs`, `round` (banker's rounding) |
 | combinatorics | `factorial`, `gcd`, `lcm`, `comb`, `perm` |

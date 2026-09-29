@@ -32,7 +32,7 @@ calc eval 'price=12500' 'qty=37' 'price*qty'   # 462500
 ```
 
 Safe evaluation via `simpleeval` (no Python `eval`/`exec`). Supported
-functions include `sqrt, sin, cos, tan, log, log2, log10, exp, floor, ceil,
+functions include `sqrt, sin, cos, tan, log, ln, log2, log10, exp, floor, ceil,
 fabs, factorial, gcd, lcm, hypot, pow, ...`; constants `pi`, `tau`, `e`.
 Multiple statements (expressions or `name = expr` assignments) may be passed
 to one `eval` call — variables persist across statements, assignments print

@@ -32,6 +32,7 @@ _FUNCTION_NAMES = (
     "cosh",
     "tanh",
     "log",
+    "ln",
     "log2",
     "log10",
     "log1p",
@@ -65,7 +66,7 @@ _FUNCTION_NAMES = (
 _FUNCTIONS = {
     name: getattr(math, name)
     for name in _FUNCTION_NAMES
-    if name not in ("abs", "min", "max", "round")
+    if name not in ("abs", "min", "max", "round", "ln")
 }
 _FUNCTIONS.update(
     {
@@ -73,6 +74,9 @@ _FUNCTIONS.update(
         "min": min,
         "max": max,
         "round": round,  # banker's rounding, documented
+        # ln is the natural-log alias of log, matching the calculus/sym
+        # surfaces (issue 11); both resolve to math.log.
+        "ln": math.log,
         # gamma/lgamma: surface integral results as ints (24, not 24.0) to
         # preserve the bare-integer stdout convention for exact values.
         "gamma": lambda x: _int_if_exact(math.gamma(x)),
