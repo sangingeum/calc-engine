@@ -1,7 +1,9 @@
 # calc-engine
 
 Deterministic, subcommand-driven CLI math engine for AI agents. Python 3.11+,
-uv-managed, packaged via `uv_build` (console script `calc = calc.cli:main`).
+uv-managed, packaged via `uv_build` (console scripts `calc` and `calcx`,
+both `calc.cli:main` — `calcx` is the Windows-safe alias, since
+`C:\Windows\System32\calc.exe` is on PATH there).
 
 ## Layout
 

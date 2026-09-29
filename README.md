@@ -21,6 +21,19 @@ uv run calc eval "2+2"     # run via uv
 uv tool install --editable .
 ```
 
+Installation provides **two equivalent console scripts**: `calc` and `calcx`.
+Use whichever is not already taken on your platform.
+
+- **POSIX**: `calc` works (and is the name used throughout this document).
+- **Windows**: use **`calcx`**. `C:\Windows\System32\calc.exe` — the built-in
+  Calculator app — is on PATH, so a bare `calc` opens the calculator instead
+  of this tool. `calcx` does not collide with any Windows executable.
+
+```bash
+calcx eval "2+2"           # Windows: the installed console script
+uv run calcx eval "2+2"    # either platform, from a checkout
+```
+
 ## Subcommands
 
 ### eval — expression evaluation

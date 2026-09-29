@@ -21,6 +21,17 @@ calc <subcommand> [args] [--precision N]
 If the `calc` console script is not on PATH, run from the repo via
 `uv run calc <subcommand> ...`.
 
+Both `calc` and `calcx` resolve to the same entry point — pick whichever is
+not shadowed on your platform. **On Windows, use `calcx`.** `calc` there
+resolves to the built-in Calculator app (`C:\Windows\System32\calc.exe`),
+which is on PATH, so a bare `calc` launches the calculator instead of this
+tool; `calcx` has no such collision.
+
+```bash
+calcx <subcommand> [args] [--precision N]   # Windows invocation
+uv run calcx <subcommand> ...               # from a repo checkout
+```
+
 ---
 
 ## 1. eval — expression evaluation

@@ -17,6 +17,7 @@ dependencies = [
 
 [project.scripts]
 calc = "calc.cli:main"
+calcx = "calc.cli:main"
 
 [dependency-groups]
 dev = [
