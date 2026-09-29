@@ -404,6 +404,30 @@ calc gof chi2-bins DATA FAMILY [family flags] --bins K [--ddof N] --field statis
   convention). Continuous families only (`uniform beta normal lognormal
   exponential gamma t chi2 kumaraswamy`); `binomial`/`poisson` are
   `ArgumentError`.
+- **ks on `two-point`** (the step-CDF family): a two-point mixture — two point
+  masses at authored locations with authored weights. Flags: `--low`/`--high`
+  are the mass locations (`low < high`), `--weight-low`/`--weight-high` their
+  masses (both positive, summing to 1) — e.g. the sweep's 25/75 bimodal arm is
+  `--low 0.25 --high 0.75 --weight-low 0.25 --weight-high 0.75`. A step CDF has
+  no density, so the pinned continuous convention does not apply here: the
+  statistic is the **exact discrete two-sided supremum** (the route the
+  reference bimodal preflight uses), and `--field p` is an `ArgumentError` (no
+  pinned p for a step CDF; the continuous asymptotic p is conservative under
+  ties). `chi2-bins` is likewise `ArgumentError` (equiprobable PPF bins are
+  undefined for point masses).
+  - **Ties / duplicate support points** (degenerate-but-well-defined): equal
+    data values collapse to ONE support point — a value appearing k times
+    contributes a single (post-jump, pre-jump) pair, not k steps. At each
+    distinct value `p` the statistic charges the post-jump theoretical value
+    `F(p)` against the post-jump empirical CDF, and the pre-jump (left-limit)
+    theoretical value `F(p − 1e−12)` against the pre-jump empirical CDF. The
+    `1e−12` left-limit offset is the precision-12 hygiene rule (calc-engine #10,
+    per the #4 resolution): the offset is authored rather than obtained by
+    rounding the support points, and support points/weights are used as given.
+    A sample
+    that matches the mixture exactly therefore scores `D = 0` (whereas
+    `scipy.stats.kstest` on the same step CDF reports the maximum possible
+    `D = 0.5`).
 - **chi2**: OBSERVED/EXPECTED are JSON arrays of counts of equal length; sums
   must match (else `MathError`); `df = k − 1 − ddof`.
 - **chi2-bins**: K equiprobable bins from the family's PPF at i/K; expected
@@ -416,6 +440,9 @@ calc gof chi2-bins DATA FAMILY [family flags] --bins K [--ddof N] --field statis
 calc gof ks "[0.05,0.2,0.35,0.5,0.65,0.8,0.95]" uniform --low 0 --high 1 --field statistic
                                              # 0.0929
 calc gof chi2 "[18,22,20,20]" "[20,20,20,20]" --field p   # 0.9402
+# bimodal preflight: sample in a file, mixture authored inline
+calc gof ks @bimodal.json two-point --low 0.25 --high 0.75 \
+  --weight-low 0.25 --weight-high 0.75 --field statistic   # exact step-CDF D
 ```
 
 ## sym — symbolic equivalence / simplify / expand (real domain)

@@ -323,7 +323,11 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "operands",
         nargs="+",
-        help="ks: DATA FAMILY; chi2: OBSERVED EXPECTED; chi2-bins: DATA FAMILY",
+        help=(
+            "ks: DATA FAMILY (family two-point = step CDF: --low/--high mass "
+            "locations, --weight-low/--weight-high masses); chi2: OBSERVED "
+            "EXPECTED; chi2-bins: DATA FAMILY"
+        ),
     )
     p.add_argument(
         "--bins", type=float, default=None, help="chi2-bins: number of equiprobable bins"
@@ -339,8 +343,8 @@ def _build_parser() -> argparse.ArgumentParser:
         ("beta", "beta: second shape"),
         ("mu", "normal/lognormal: mean (of the log for lognormal)"),
         ("sigma", "normal/lognormal: standard deviation"),
-        ("low", "uniform: lower bound"),
-        ("high", "uniform: upper bound"),
+        ("low", "uniform: lower bound; two-point: first mass location"),
+        ("high", "uniform: upper bound; two-point: second mass location"),
         ("lam", "poisson: rate (ks: rejected)"),
         ("scale", "exponential/gamma: scale"),
         ("shape", "gamma: shape"),
@@ -349,6 +353,8 @@ def _build_parser() -> argparse.ArgumentParser:
         ("df", "t/chi2: degrees of freedom (> 0)"),
         ("a", "kumaraswamy: a > 0"),
         ("b", "kumaraswamy: b > 0"),
+        ("weight-low", "two-point: weight of the mass at --low (weights sum to 1)"),
+        ("weight-high", "two-point: weight of the mass at --high"),
     ):
         p.add_argument(f"--{name}", type=float, default=None, help=helptext)
 
