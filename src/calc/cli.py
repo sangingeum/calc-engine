@@ -178,7 +178,11 @@ def _build_parser() -> argparse.ArgumentParser:
         parents=[precision_parent, max_input_parent],
         help="matrix operations (JSON matrices)",
     )
-    p.add_argument("op", help="multiply|add|subtract|inverse|determinant|transpose")
+    p.add_argument(
+        "op",
+        help="multiply|add|subtract|inverse|determinant|transpose"
+        "|solve|rank|trace|power|scale|identity",
+    )
     p.add_argument("matrices", nargs="+", help="one or two JSON matrices")
 
     p = sub.add_parser(

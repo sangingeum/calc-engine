@@ -215,10 +215,19 @@ calc matrix multiply "[[1,2],[3,4]]" "[[1],[2]]"   # [[5],[11]]
 calc matrix determinant "[[1,2],[3,4]]"            # -2.0000
 calc matrix inverse "[[4,7],[2,6]]"
 calc matrix transpose "[[1,2],[3,4]]"              # [[1,3],[2,4]]
+calc matrix solve "[[2,1],[1,3]]" "[3,5]"          # [0.8000,1.4000]  (square A, vector b)
+calc matrix rank "[[1,2],[2,4]]"                   # 1
+calc matrix trace "[[1,2],[3,4]]"                  # 5.0000
+calc matrix power "[[1,1],[0,1]]" 3                # [[1,3],[0,1]]  (square A, integer N >= 0)
+calc matrix scale "[[1,2],[3,4]]" 2                # [[2.0000,4.0000],[6.0000,8.0000]]
+calc matrix identity 3                             # 3x3 identity
 ```
 
-Operations: `multiply, add, subtract, inverse, determinant, transpose`.
-Matrices are strict JSON (arrays of arrays of numbers).
+Operations: `multiply, add, subtract, inverse, determinant, transpose,
+solve, rank, trace, power, scale, identity`.
+Matrices are strict JSON (arrays of arrays of numbers). Dimension-mismatch
+errors name the shapes (`MathError: cannot multiply 2x2 by 1x3`); `solve`
+on a singular system is `MathError: singular system`.
 
 ### convert-base — integer base conversion
 

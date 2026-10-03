@@ -235,7 +235,10 @@ calc stat quantile "[1,2,3,4,5]" 0.5          # 3.0000 — NumPy 'linear': h=(n-
 calc finance fv --rate 0.05 --periods 10 --pv 1000
 calc finance pv --rate 0.05 --periods 10 --fv 1628.89
 calc finance pmt --rate 0.05 --periods 10 --principal 1000   # pmt: --principal, --pv alias; strict exact arg sets
-calc matrix multiply "[[1,2],[3,4]]" "[[1],[2]]"    # multiply|add|subtract|inverse|determinant|transpose (strict JSON)
+calc matrix multiply "[[1,2],[3,4]]" "[[1],[2]]"    # multiply|add|subtract|inverse|determinant|transpose|solve|rank|trace|power|scale|identity (strict JSON)
+calc matrix solve "[[2,1],[1,3]]" "[3,5]"           # [0.8000,1.4000] — square A; singular -> MathError
+calc matrix rank "[[1,2],[2,4]]"                    # 1; trace -> 5.0000; power/scale/identity too
+calc matrix multiply "[[1,2],[3,4]]" "[[1,2,3]]"    # MathError: cannot multiply 2x2 by 1x3 (shapes named)
 calc calculus derive "x**2 * sin(x)" --var x
 calc calculus integrate "x**2" --var x --lower 0 --upper 1    # definite -> 0.3333; without bounds -> symbolic string
 calc calculus limit "1/x" --var x --approach 0                 # MathError — two-sided by default; --dir + gives inf
