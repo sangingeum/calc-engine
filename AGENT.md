@@ -11,12 +11,17 @@ both `calc.cli:main` — `calcx` is the Windows-safe alias, since
   input resolver glue, error→stderr mapping, and the single stdout writer.
 - `src/calc/ops/` — pure domain modules (`eval_ops`, `stat_ops`,
   `distribution_ops`, ...). Ops never touch fs/stdin (resolver is CLI-layer
-  only, enforced by a static test).
+  only, enforced by a static test). The package resolves its modules
+  LAZILY: scipy/pint/sympy/numpy-backed modules load only in the handler
+  that needs them (cold-start contract, tested).
 - `src/calc/errors.py` — typed error taxonomy (`CalcError` base with a class
   `prefix` mapped to stderr: MathError, SyntaxError, ValueError,
-  ArgumentError, AssertionError).
+  ArgumentError, AssertionError, LimitError, InternalError, CheckFailed).
+- `src/calc/limits.py` — resource guards: result-digit / factorial / comb /
+  expression-length caps and the wall-clock timeout; each constant
+  overridable via a `CALC_*` env var; guards run before computing.
 - `src/calc/render.py` — value→stdout rendering (`--precision` applies at
-  render only).
+  render only; digit-limit overflow is a LimitError).
 - `src/calc/input_resolver.py` — the only fs/stdin access point (`@file`,
   `@-`, `@@escape`, 16 MiB cap).
 - `tests/unit`, `tests/contract` — pytest; `tests/conftest.py` runs `calc`
@@ -36,6 +41,10 @@ both `calc.cli:main` — `calcx` is the Windows-safe alias, since
 - Byte-exact stdout on success (result only); exactly one typed stderr line
   on failure; exit 0 success / 1 domain failure / 2 usage.
 - `simpleeval` only — never Python `eval`/`exec`.
+- Resource guards run BEFORE computing: a pathological request is a typed
+  `LimitError` in microseconds, never a hang.
+- Ops modules are pure and lazy-loaded; version + docs live in CHANGELOG.md
+  (release notes) and DESIGN.md (design decisions).
 - `eval` supports compound statements (expressions + `name = expr`
   assignments, shared names dict, render-time precision); `batch` reads
   newline-separated statements from stdin.

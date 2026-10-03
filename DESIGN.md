@@ -1,8 +1,8 @@
 # DESIGN.md — calc-engine
 
 Design document for `calc`, a deterministic, subcommand-driven CLI math engine
-for AI agents. Written against the requirements doc
-(`~/.hermes/cache/documents/doc_2d100997a3b8_computation_CLI_for_agents._Overview._Overview.md`).
+for AI agents. Written against the original requirements document (local
+working copy; not part of the repository).
 This is a design-only document; no implementation is included.
 
 ## 1. Architectural Overview
@@ -303,8 +303,8 @@ Re-run the recipe before treating any percentage as a defect.
 
 ### 6b. Stat extension (2026-09-21) — documented decisions
 
-The probability/statistics extension (spec
-`doc_fdfef6791813_calc-engine-extension-spec.md`) resolved its ambiguities as
+The probability/statistics extension (its own requirements document,
+a local working copy) resolved its ambiguities as
 follows (all pinned by tests; full detail in SKILL.md):
 
 1. **`covariance` ddof**: population (ddof=0) default; `--ddof 1` for sample.
@@ -382,6 +382,66 @@ be ratified before implementation:
    package. Irrelevant if never published; distribution method (uv tool, PATH
    script, agent-side wrapper) is unspecified in the spec — assuming local
    install only.
+
+## 6c. Resource guards and hardening (2026-10-04) — documented decisions
+
+Ratified behavior for the safety round (all pinned by tests):
+
+1. **Guards run before computing** (`src/calc/limits.py`, single source of
+   truth; every constant env-overridable, defaults in parentheses):
+   result digits 100000 (`CALC_MAX_RESULT_DIGITS`), factorial argument
+   20000 (`CALC_MAX_FACTORIAL_ARG`), comb/perm n 100000
+   (`CALC_MAX_COMB_N`), expression length 10000
+   (`CALC_MAX_EXPRESSION_CHARS`), wall-clock timeout 10 s
+   (`CALC_TIMEOUT_SECONDS`, 0 disables). A tripped guard is
+   `LimitError: ...` (exit 1, empty stdout) — never a hang.
+2. **Digit-limit mapping.** CPython's int→str cap (4300 by default) is
+   raised to the result-digit limit at startup; render-time overflow maps
+   to `LimitError: result exceeds N digits` (previously a mislabeled
+   `MathError: internal computation failure`). The interpreter applies its
+   cap with a small linear-scan slack, so tests use a 2x margin.
+3. **Timeout mechanism.** POSIX `setitimer(ITIMER_REAL)` with a handler
+   raising an internal BaseException subclass. The signal can fire inside
+   an earlier except/finally block, so the conversion to the stderr line
+   happens OUTSIDE the guarded region (main/_run_command split). The
+   default applies to `eval/batch/calculus/sym/physics/check`; a per-call
+   `--timeout SECONDS` overrides it.
+4. **Memory guard deferred.** `RLIMIT_AS` interacts badly with numpy/scipy
+   startup allocation; not implemented. The timeout plus argument caps
+   bound memory growth in practice.
+5. **Top-level handler.** Unexpected exceptions are
+   `InternalError: <ExceptionType>: <first message line>` (one line, exit
+   1); `CALC_DEBUG=1` prints the traceback (debug only). KeyboardInterrupt
+   exits 130 silently. Fuzz tests pin: no traceback ever reaches stderr in
+   normal operation, exit codes ∈ {0, 1, 2}.
+6. **`calculus limit` direction.** Default `--dir both` (left and right
+   must agree; disagreement is
+   `MathError: limit does not exist (left=..., right=...)`); `--dir +|-`
+   for explicit one-sided limits. The pre-fix behavior silently presented
+   sympy's right-hand default.
+7. **Cold-start (lazy imports).** Ops modules load through a lazy package
+   proxy; the CLI binds heavy modules inside handlers. Recorded numbers
+   (project venv, warm page cache): `eval "1+1"` 0.80 s → 0.08 s; stat
+   ~0.49 s, calculus ~0.27 s, convert-unit ~0.23 s. `eval`, `batch`,
+   `datetime` (and now `functions`/`schema`) import no scipy/pint/sympy/
+   numpy at all; `convert-unit` pays for pint (which itself probes
+   scipy/numpy — third-party behavior, excluded from the first-party
+   lazy-import rule).
+8. **`check` vs `assert`.** `assert` keeps numeric-literal operands and its
+   `AssertionError` failure prefix. `check` evaluates full eval
+   expressions on both sides, prints `true`/`false` with exit 0 in both
+   cases (a false answer is a valid result), and only `--strict` turns
+   false into a `CheckFailed` domain failure.
+9. **Finance sign convention.** numpy-financial: cash out negative, cash
+   in positive; documented with worked examples (README, SKILL.md).
+
+Deferred (proposed, not ratified into this release): a global
+`--arith {float,decimal,exact}` mode across matrix/stat/finance (eval's
+`--exact` rational mode already exists); `matrix eigenvalues`
+(real-only result is a footgun — complex pairs are common); decimal
+finance; opt-in `--json` output; hypothesis-based fuzzing (pytest suite
+carries a seeded bounded fuzz instead); a CI 3.11 leg (pint annotation
+typing blocks `mypy` on 3.11 — documented in ci.yml).
 
 ## 7. Non-goals
 
