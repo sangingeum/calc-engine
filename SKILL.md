@@ -1,6 +1,6 @@
 ---
 name: calc-engine
-description: Deterministic `calc` CLI math engine for AI agents — zero-chat stdout, typed stderr errors, 23 subcommands (eval, batch, stat, finance, matrix, convert-base, convert-unit, calculus, physics-constant, physics, vector, bits, endian, hash, crc, base64, datetime, regex, distribution, assert, check, gof, sym). Use whenever an agent needs safe computation or statistical/probabilistic verification offloaded to a subprocess.
+description: Deterministic `calc` CLI math engine for AI agents — zero-chat stdout, typed stderr errors, 24 subcommands (eval, batch, stat, finance, matrix, convert-base, convert-unit, calculus, physics-constant, physics, vector, bits, endian, hash, crc, base64, datetime, regex, distribution, assert, check, number, gof, sym). Use whenever an agent needs safe computation or statistical/probabilistic verification offloaded to a subprocess.
 ---
 
 # calc — CLI math engine for agents
@@ -242,6 +242,8 @@ calc calculus limit "1/x" --var x --approach 0                 # MathError — t
 calc calculus limit "sin(x)/x" --var x --approach 0            # 1.0000 — both sides agree
 calc physics kinematics --solve d --v0 10 --t 2 --a 3         # registry below
 calc vector dot "[1,2,3]" "[4,5,6]"   # dot|cross|norm|add|subtract (strict JSON)
+calc number factorize 360             # 2^3*3^2*5 — isprime|nextprime|factorize|modinv|gcd|lcm
+calc number modinv 3 11               # 4 (no inverse -> MathError); isprime prints true/false
 ```
 
 ### Additional subcommands (quick reference)

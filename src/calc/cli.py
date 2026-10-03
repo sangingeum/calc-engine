@@ -510,6 +510,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="a false check is a domain failure (CheckFailed, exit 1)",
     )
 
+    p = sub.add_parser(
+        "number",
+        parents=[precision_parent, timeout_parent],
+        help="number theory: isprime|nextprime|factorize|modinv|gcd|lcm",
+    )
+    p.add_argument("op", help="isprime|nextprime|factorize|modinv|gcd|lcm")
+    p.add_argument(
+        "operands", nargs="+", help="integers: N | N | N | A M | a b c... | a b c..."
+    )
+
     return parser
 
 
@@ -766,6 +776,7 @@ def _handlers() -> dict:
             strict=a.strict,
         ),
         "gof": lambda a: _lazy("gof_ops").gof_command(a),
+        "number": lambda a: _lazy("number_ops").number(a.op, a.operands),
         "sym": lambda a: _lazy("sym_ops").sym_command(a),
     }
 

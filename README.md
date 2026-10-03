@@ -179,6 +179,22 @@ calc check --actual "1/3" --expected "0.333"             # false (exit 0 — a f
 calc check --actual "1/3" --expected "0.333" --strict    # exit 1, stderr CheckFailed: actual=... expected=...
 ```
 
+### number — number theory
+
+```bash
+calc number factorize 360        # 2^3*3^2*5   (ascending bases; N >= 2)
+calc number isprime 97           # true
+calc number nextprime 100        # 101
+calc number modinv 3 11          # 4    (no inverse -> MathError)
+calc number gcd 12 18 24         # 6    (multi-argument)
+calc number lcm 4 6              # 12
+```
+
+`isprime` is deterministic below 2^64 (sympy: BPSW plus known-good
+Miller-Rabin bases); beyond that it is a strong probable-prime result —
+treat >2^64 "true" as probabilistic. `factorize`/`nextprime` are subject to
+the compute timeout and the size guard (MathError above the cap).
+
 ### finance — financial operations
 
 Mirrors numpy-financial signatures with strict exactly-required-set

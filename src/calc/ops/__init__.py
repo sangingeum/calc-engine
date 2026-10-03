@@ -29,6 +29,7 @@ _MODULES = (
     "gof_ops",
     "hash_ops",
     "matrix_ops",
+    "number_ops",
     "parse_utils",
     "physics_ops",
     "regex_ops",
