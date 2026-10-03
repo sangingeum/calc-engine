@@ -116,7 +116,9 @@ def test_inv2_huge_exact_result_one_typed_line():
     assert proc.returncode == 1
     assert proc.stdout == ""
     assert proc.stderr.count("\n") == 1, proc.stderr
-    assert proc.stderr.startswith("MathError: "), proc.stderr
+    # A result beyond the digit limit is a resource guard trip, not an
+    # internal failure: LimitError (see limits.py / render.py).
+    assert proc.stderr.startswith("LimitError: "), proc.stderr
 
 
 def test_r11_exact_plus_precision_always_rejected():

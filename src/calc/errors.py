@@ -40,3 +40,21 @@ class ArgumentError(CalcError):
     """Missing/extra arguments or an unknown operation choice."""
 
     prefix = "ArgumentError"
+
+
+class AssertionError_(SyntaxError_):
+    """Failed assertion (``assert`` subcommand): a domain failure, not usage."""
+
+    prefix = "AssertionError"
+
+
+class LimitError(CalcError):
+    """A resource guard tripped: timeout, argument size, or result size."""
+
+    prefix = "LimitError"
+
+
+class InternalError(CalcError):
+    """Unexpected exception caught by the top-level handler (defensive)."""
+
+    prefix = "InternalError"

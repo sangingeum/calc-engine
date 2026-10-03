@@ -10,12 +10,22 @@ Contract (DESIGN.md 1):
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
+import traceback
 from collections.abc import Sequence
 
-from calc.errors import ArgumentError, CalcError
+from calc.errors import ArgumentError, CalcError, LimitError
 from calc.input_resolver import DEFAULT_MAX_INPUT_BYTES, resolve_all, resolve_token
+from calc.limits import (
+    _TimeoutError_,
+    apply_digit_limit,
+    max_expression_chars,
+    start_timeout,
+    stop_timeout,
+    timeout_seconds,
+)
 from calc.ops import (
     assert_ops,
     base_ops,
@@ -42,6 +52,10 @@ from calc.render import render
 # a positional (GitHub issue 6), so it is left for argparse to reject.
 _LONG_OPTION_PATTERN = re.compile(r"^--[A-Za-z][\w-]*(=.*)?$")
 
+# Subcommands that carry a wall-clock compute budget (--timeout flag; the
+# budget defaults to limits.timeout_seconds()). Others are stdlib-bound.
+_TIMED_COMMANDS = frozenset({"eval", "batch", "calculus", "sym", "physics"})
+
 
 def _build_parser() -> argparse.ArgumentParser:
     precision_parent = argparse.ArgumentParser(add_help=False)
@@ -67,7 +81,21 @@ def _build_parser() -> argparse.ArgumentParser:
         help=f"file/stdin input size cap (default {DEFAULT_MAX_INPUT_BYTES})",
     )
 
-    p = sub.add_parser("eval", parents=[precision_parent], help="evaluate a math expression")
+    timeout_parent = argparse.ArgumentParser(add_help=False)
+    timeout_parent.add_argument(
+        "--timeout",
+        dest="timeout",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        help="compute time budget in seconds (default 10, 0 disables)",
+    )
+
+    p = sub.add_parser(
+        "eval",
+        parents=[precision_parent, timeout_parent],
+        help="evaluate a math expression",
+    )
     p.add_argument(
         "exprs",
         nargs="+",
@@ -91,7 +119,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser(
         "batch",
-        parents=[precision_parent, max_input_parent],
+        parents=[precision_parent, max_input_parent, timeout_parent],
         help="evaluate multiple newline-separated statements from stdin",
     )
 
@@ -190,7 +218,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("dst", help="target unit, e.g. km, degF")
 
     p = sub.add_parser(
-        "calculus", parents=[precision_parent], help="derive|integrate|limit via sympy"
+        "calculus",
+        parents=[precision_parent, timeout_parent],
+        help="derive|integrate|limit via sympy",
     )
     p.add_argument("op", help="derive|integrate|limit")
     p.add_argument("expr", help="expression in the variable, e.g. 'x**2'")
@@ -206,7 +236,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("symbol", help="constant attribute name, e.g. c, g, G")
 
-    p = sub.add_parser("physics", help="solve a domain equation for a symbol")
+    p = sub.add_parser(
+        "physics",
+        parents=[timeout_parent],
+        help="solve a domain equation for a symbol",
+    )
     p.add_argument("domain", help="kinematics|force|energy")
     p.add_argument("--solve", required=True, help="symbol to solve for, e.g. d")
     p.add_argument("--precision", type=int, default=4, help=argparse.SUPPRESS)
@@ -360,7 +394,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser(
         "sym",
-        parents=[precision_parent, max_input_parent],
+        parents=[precision_parent, max_input_parent, timeout_parent],
         help="symbolic equivalence, simplify, expand (real domain)",
     )
     p.add_argument("op", help="equiv|simplify|expand")
@@ -861,12 +895,59 @@ def _datetime_handler(a: argparse.Namespace) -> object:
     )
 
 
+def _check_expression_lengths(args: argparse.Namespace) -> None:
+    """Apply the expression-characters guard to eval/batch/sym statements."""
+    if args.command not in ("eval", "sym"):
+        return
+    cap = max_expression_chars()
+    statements = getattr(args, "exprs", None) or []
+    for statement in statements:
+        if len(statement) > cap:
+            raise LimitError(
+                f"expression exceeds {cap} characters ({len(statement)} given)"
+            )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
+    # Raise the int->str digit cap to the documented result-digit limit before
+    # anything renders (limits.py owns the value; env-overridable).
+    apply_digit_limit()
     argv = list(sys.argv[1:]) if argv is None else list(argv)
     argv, physics_kwargs = _extract_physics_kwargs(argv)
     parser = _build_parser()
     argv, stray_options = _normalize_positionals(argv, _subparser_option_map(parser))
     args, unknown = parser.parse_known_args(argv)
+    # Wall-clock guard: armed before the handler runs, disarmed on every exit
+    # path (finally). Subcommands without --timeout still get the default via
+    # CALC_TIMEOUT_SECONDS only where the flag exists (eval, batch, calculus,
+    # sym, physics); others are fast/stdlib-bound by construction.
+    budget = getattr(args, "timeout", None)
+    if budget is None:
+        budget = timeout_seconds() if args.command in _TIMED_COMMANDS else 0.0
+    armed = start_timeout(budget)  # noqa: F841 — arming is the effect; value unused
+    exit_code: int | None = None
+    timeout_fired = False
+    try:
+        exit_code = _run_command(args, stray_options, unknown, physics_kwargs)
+    except _TimeoutError_:
+        # The SIGALRM handler can fire inside an earlier except/finally block;
+        # converting it HERE (outside the guarded region) keeps the stderr
+        # write itself safe from a second firing.
+        timeout_fired = True
+    finally:
+        stop_timeout()
+    if timeout_fired:
+        print(f"LimitError: timed out after {budget:g}s", file=sys.stderr)
+        return 1
+    return exit_code if exit_code is not None else 0
+
+
+def _run_command(
+    args: argparse.Namespace,
+    stray_options: list[str],
+    unknown: list[str],
+    physics_kwargs: dict[str, float],
+) -> int:
     try:
         # Issue 6: strays parked by _normalize_positionals are reported here,
         # verbatim and whole (`--foo 3`), before argparse's own leftovers.
@@ -886,6 +967,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise ArgumentError("--exact cannot be combined with --precision")
         args.kwargs = physics_kwargs
         _resolve_cli_inputs(args)
+        _check_expression_lengths(args)
         result = _handlers()[args.command](args)
         if isinstance(result, eval_ops.CompoundEvalOutput):
             # Compound eval/batch: statements render line by line; assignments
@@ -910,7 +992,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 130
     except BrokenPipeError:
         return 1
-    except Exception:  # noqa: BLE001 — defensive: never leak a traceback to stdout
-        print("MathError: internal computation failure", file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001 — defensive: never leak a traceback
+        if os.environ.get("CALC_DEBUG"):  # pragma: no cover - debug escape hatch
+            traceback.print_exc()
+        first_line = str(exc).strip().splitlines()[0] if str(exc).strip() else ""
+        detail = f"{type(exc).__name__}: {first_line}".rstrip(": ")
+        print(f"InternalError: {detail}", file=sys.stderr)
         return 1
     return 0

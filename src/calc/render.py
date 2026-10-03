@@ -14,6 +14,9 @@ import math
 from collections.abc import Sequence
 from fractions import Fraction
 
+from calc.errors import LimitError
+from calc.limits import max_result_digits
+
 
 def render(result: object, precision: int = 4) -> str:
     """Render a computed result to its exact stdout string."""
@@ -23,14 +26,35 @@ def render(result: object, precision: int = 4) -> str:
     if isinstance(result, bool):  # defensive; booleans never reach stdout
         return str(int(result))
     if isinstance(result, Fraction):  # R11 --exact: integer or p/q in lowest terms
-        return str(result)
+        return _render_exact(result)
     if isinstance(result, int):
-        return str(result)
+        return _render_int(result)
     if isinstance(result, float):
         return _format_float(result, precision)
     if isinstance(result, Sequence):
         return "[" + ",".join(render(item, precision) for item in result) + "]"
     return str(result)
+
+
+def _render_exact(value: Fraction) -> str:
+    """Render an exact Fraction; huge numerators map to LimitError (not raw)."""
+    return _render_int_str(value.numerator) + (
+        "/" + _render_int_str(value.denominator) if value.denominator != 1 else ""
+    )
+
+
+def _render_int(value: int) -> str:
+    return _render_int_str(value)
+
+
+def _render_int_str(value: int) -> str:
+    """str() with the digit-limit guard: overflow is a LimitError, never raw."""
+    try:
+        return str(value)
+    except ValueError:
+        raise LimitError(
+            f"result exceeds {max_result_digits()} digits"
+        ) from None
 
 
 def _format_float(value: float, precision: int) -> str:

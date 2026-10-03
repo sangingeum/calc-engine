@@ -7,7 +7,10 @@ import re
 import pytest
 from conftest import run_calc
 
-ERROR_LINE = re.compile(r"^(MathError|SyntaxError|ValueError|ArgumentError): .+")
+ERROR_LINE = re.compile(
+    r"^(MathError|SyntaxError|ValueError|ArgumentError|AssertionError"
+    r"|LimitError|InternalError|CheckFailed): .+"
+)
 
 SUCCESS_CASES = [
     (["eval", "2+2"], "4"),

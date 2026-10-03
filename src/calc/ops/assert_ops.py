@@ -17,15 +17,9 @@ from __future__ import annotations
 
 import math
 
-from calc.errors import ArgumentError, SyntaxError_
+from calc.errors import ArgumentError, AssertionError_, SyntaxError_
 
 _SIGNS = ("positive", "negative", "zero", "nonnegative", "nonpositive")
-
-
-class AssertionError_(SyntaxError_):
-    """Failed assertion: stderr prefix ``AssertionError``."""
-
-    prefix = "AssertionError"
 
 
 def _parse_float(token: str, what: str) -> float:

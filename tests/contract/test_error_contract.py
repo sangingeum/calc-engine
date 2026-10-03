@@ -11,6 +11,8 @@ def test_error_prefixes_map_to_taxonomy() -> None:
         (["eval", "open(1)"], "SyntaxError"),
         (["convert-unit", "1", "zzz", "m"], "ValueError"),
         (["calculus", "frobnicate", "x", "--var", "x"], "ArgumentError"),
+        (["assert", "equal", "1", "2"], "AssertionError"),
+        (["eval", "factorial(10**7)"], "LimitError"),
     ]
     for args, prefix in cases:
         proc = run_calc(*args)

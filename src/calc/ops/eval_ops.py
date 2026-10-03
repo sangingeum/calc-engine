@@ -16,6 +16,7 @@ from typing import NamedTuple
 from simpleeval import simple_eval
 
 from calc.errors import ArgumentError, CalcError, MathError, SyntaxError_
+from calc.limits import check_comb, check_factorial
 
 _NAMES = {"pi": math.pi, "tau": math.tau, "e": math.e}
 
@@ -66,8 +67,33 @@ _FUNCTION_NAMES = (
 _FUNCTIONS = {
     name: getattr(math, name)
     for name in _FUNCTION_NAMES
-    if name not in ("abs", "min", "max", "round", "ln")
+    if name not in ("abs", "min", "max", "round", "ln", "factorial", "comb", "perm")
 }
+
+
+def _guarded_factorial(n: object) -> int:
+    if not isinstance(n, int):
+        # Mirror math.factorial's strictness: float arguments are a
+        # SyntaxError (invalid expression), matching the pre-guard behavior.
+        raise SyntaxError_("'float' object cannot be interpreted as an integer")
+    check_factorial(n)
+    return math.factorial(n)
+
+
+def _guarded_comb(n: object, k: object) -> int:
+    if not isinstance(n, int) or not isinstance(k, int):
+        raise SyntaxError_("'float' object cannot be interpreted as an integer")
+    check_comb(n, k)
+    return math.comb(n, k)
+
+
+def _guarded_perm(n: object, k: object) -> int:
+    if not isinstance(n, int) or not isinstance(k, int):
+        raise SyntaxError_("'float' object cannot be interpreted as an integer")
+    check_comb(n, k)
+    return math.perm(n, k)
+
+
 _FUNCTIONS.update(
     {
         "abs": abs,
@@ -81,6 +107,11 @@ _FUNCTIONS.update(
         # preserve the bare-integer stdout convention for exact values.
         "gamma": lambda x: _int_if_exact(math.gamma(x)),
         "lgamma": lambda x: _int_if_exact(math.lgamma(x)),
+        # Guarded before computing: a pathological argument is a LimitError
+        # in microseconds instead of a minutes-long computation.
+        "factorial": _guarded_factorial,
+        "comb": _guarded_comb,
+        "perm": _guarded_perm,
     }
 )
 
@@ -141,6 +172,10 @@ def _eval_with_names(expr: str, names: dict[str, object]) -> int | float:
     """Evaluate one expression against a shared names dict (compound chains)."""
     try:
         return simple_eval(expr, functions=_FUNCTIONS, names=names)
+    except CalcError:
+        # typed guards (LimitError etc.) raised inside guarded functions
+        # must pass through unchanged, not be re-labeled as SyntaxError
+        raise
     except ZeroDivisionError as exc:
         raise MathError(str(exc)) from None
     except (ValueError, OverflowError) as exc:
