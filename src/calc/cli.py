@@ -57,6 +57,13 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="calc",
         description="Deterministic, subcommand-driven CLI math engine for agents.",
     )
+    from calc import __version__
+
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"calc {__version__}",
+    )
     sub = parser.add_subparsers(dest="command", required=True, metavar="command")
 
     max_input_parent = argparse.ArgumentParser(add_help=False)
@@ -549,6 +556,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "operands", nargs="+", help="integers: N | N | N | A M | a b c... | a b c..."
     )
 
+    p = sub.add_parser(
+        "functions",
+        help="list the eval function whitelist, one per line",
+    )
+    p = sub.add_parser(
+        "schema",
+        help="JSON catalog of subcommands, options, and examples (agent discovery)",
+    )
+
     return parser
 
 
@@ -809,7 +825,73 @@ def _handlers() -> dict:
         "gof": lambda a: _lazy("gof_ops").gof_command(a),
         "number": lambda a: _lazy("number_ops").number(a.op, a.operands),
         "sym": lambda a: _lazy("sym_ops").sym_command(a),
+        "functions": lambda a: _functions_listing(),
+        "schema": lambda a: _schema_catalog(),
     }
+
+
+def _functions_listing() -> str:
+    """`calc functions`: the eval whitelist, one name per line (sorted)."""
+    from calc.ops.eval_ops import _FUNCTION_NAMES
+
+    return "\n".join(sorted(_FUNCTION_NAMES))
+
+
+def _schema_catalog() -> str:
+    """`calc schema`: JSON catalog of subcommands/options from the argparse tree."""
+    import json
+
+    from calc import __version__
+
+    parser = _build_parser()
+    catalog: dict[str, dict[str, object]] = {}
+    subactions = [
+        action
+        for action in parser._actions  # noqa: SLF001 - no public API for this
+        if isinstance(action, argparse._SubParsersAction)
+    ]
+    for choice, subparser in subactions[0].choices.items():
+        positional: list[dict[str, str]] = []
+        options: list[dict[str, object]] = []
+        for action in subparser._actions:  # noqa: SLF001
+            if action.dest in ("help", "version"):
+                continue
+            option_strings = list(action.option_strings)
+            if option_strings:
+                options.append(
+                    {
+                        "flags": option_strings,
+                        "dest": action.dest,
+                        "required": bool(action.required),
+                        "default": (
+                            None
+                            if action.default is argparse.SUPPRESS
+                            else (
+                                None
+                                if isinstance(action.default, str)
+                                and action.default == "None"
+                                else action.default
+                            )
+                        ),
+                        "choices": (
+                            list(action.choices)
+                            if action.choices
+                            and all(isinstance(c, str) for c in action.choices)
+                            else None
+                        ),
+                        "help": action.help or "",
+                    }
+                )
+            elif action.nargs != argparse.PARSER and action.dest != argparse.SUPPRESS:
+                positional.append(
+                    {"dest": action.dest, "nargs": str(action.nargs), "help": action.help or ""}
+                )
+        catalog[choice] = {"positionals": positional, "options": options}
+    return json.dumps(
+        {"version": __version__, "subcommands": catalog},
+        indent=1,
+        sort_keys=True,
+    )
 
 
 def _source_path(token: str) -> str | None:
@@ -1071,7 +1153,8 @@ def _run_command(
         if isinstance(result, eval_ops.CompoundEvalOutput):
             # Compound eval/batch: statements render line by line; assignments
             # print nothing; a failing statement keeps its slot on stdout.
-            precision = args.precision if args.precision is not None else 4
+            precision = getattr(args, "precision", None)
+            precision = precision if precision is not None else 4
             for index, kind, payload in result.entries:
                 if kind == "error":
                     print(f"{index}: {payload}")
@@ -1083,7 +1166,7 @@ def _run_command(
         # Rendering/printing sit INSIDE the defensive handler: a render failure
         # (e.g. the CPython int→str limit on a huge --exact Fraction) must
         # still emit exactly one typed stderr line (INV-2), never a traceback.
-        print(render(result, args.precision if args.precision is not None else 4))
+        print(render(result, getattr(args, "precision", None) or 4))
     except CalcError as exc:
         print(f"{type(exc).prefix}: {exc}", file=sys.stderr)
         return 1

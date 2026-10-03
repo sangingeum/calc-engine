@@ -1,6 +1,6 @@
 ---
 name: calc-engine
-description: Deterministic `calc` CLI math engine for AI agents — zero-chat stdout, typed stderr errors, 24 subcommands (eval, batch, stat, finance, matrix, convert-base, convert-unit, calculus, physics-constant, physics, vector, bits, endian, hash, crc, base64, datetime, regex, distribution, assert, check, number, gof, sym). Use whenever an agent needs safe computation or statistical/probabilistic verification offloaded to a subprocess.
+description: Deterministic `calc` CLI math engine for AI agents — zero-chat stdout, typed stderr errors, 26 subcommands (eval, batch, stat, finance, matrix, convert-base, convert-unit, calculus, physics-constant, physics, vector, bits, endian, hash, crc, base64, datetime, regex, distribution, assert, check, number, functions, schema, gof, sym). Use whenever an agent needs safe computation or statistical/probabilistic verification offloaded to a subprocess.
 ---
 
 # calc — CLI math engine for agents
@@ -597,4 +597,12 @@ infinity) return sympy-style strings, e.g. `x**3/3`.
   eval (use `calculus` with `--var` for symbolic work); assignment statements
   bind variables within one invocation only.
 - `convert-base` is integer-only; fractional input is a `MathError`.
-- `stat mode` on multimodal data returns the first mode only.
+- `stat mode` on multimodal data returns the first mode only; `stat multimode`
+  returns ALL modes sorted ascending.
+- Resource caps (defaults in parentheses, each overridable via env):
+  result digits (`CALC_MAX_RESULT_DIGITS=100000`), factorial/comb/perm
+  argument (`CALC_MAX_FACTORIAL_ARG=20000`), comb/perm n
+  (`CALC_MAX_COMB_N=100000`), expression length
+  (`CALC_MAX_EXPRESSION_CHARS=10000`), wall-clock timeout
+  (`CALC_TIMEOUT_SECONDS=10`, `0` disables). A tripped cap is `LimitError`
+  — shrink the request or raise the cap explicitly.

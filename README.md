@@ -453,6 +453,18 @@ significant digits via general format (e.g. `calc physics-constant G` →
 `6.674e-11`). `inf`, `-inf`, and `nan` render literally; complex or
 non-real results are a `MathError`.
 
+`--timeout SECONDS` (default `10`, `0` disables) exists on `eval`, `batch`,
+`calculus`, `sym`, `physics` (and `check`): a wall-clock compute budget; a
+tripped budget is `LimitError: timed out after Ns`.
+
+## Introspection
+
+```bash
+calc --version            # calc 0.2.0
+calc functions            # the eval function whitelist, one per line (41 names)
+calc schema               # JSON catalog of every subcommand's positionals/options (agent discovery)
+```
+
 ## Error taxonomy
 
 | stderr prefix | Meaning |
@@ -462,7 +474,10 @@ non-real results are a `MathError`.
 | `ValueError` | unsupported unit or unknown physical constant |
 | `ArgumentError` | missing/extra arguments, unknown operation/algorithm/CRC variant/symbol, naive timestamp without --tz/--from, missing --width |
 | `AssertionError` | failed `assert` operation (domain failure, exit 1, empty stdout) |
-| `MathError` | invalid math: division by zero, bad dimensions, singular inverse, non-real result, value does not fit the bit width, negative shift, regex execution budget exceeded |
+| `MathError` | invalid math: division by zero, bad dimensions, singular inverse, non-real result, value does not fit the bit width, negative shift, regex execution budget exceeded, limit does not exist (two-sided) |
+| `LimitError` | resource guard tripped: compute timeout, oversized factorial/comb argument, expression beyond the character cap, result beyond the digit limit |
+| `InternalError` | unexpected exception caught by the top-level handler (still one line, exit 1; `CALC_DEBUG=1` prints the traceback) |
+| `CheckFailed` | failed `check --strict` comparison |
 
 ## Agent integration contract
 
