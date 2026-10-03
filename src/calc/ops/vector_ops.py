@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import json
 
-import numpy as np
-
 from calc.errors import ArgumentError, MathError, SyntaxError_
 
 _OPS = ("dot", "cross", "norm", "add", "subtract")
+
+
+def _numpy():
+    """numpy is resolved lazily: plain eval/stat calls must not pay for it."""
+    import numpy as np
+
+    return np
 
 
 def _parse_vector(text: str) -> list[float]:
@@ -31,6 +36,7 @@ def vector(op: str, vectors: list[str]) -> object:
             f"unknown vector operation: {op} (expected one of {', '.join(_OPS)})"
         )
     parsed = [[float(x) for x in _parse_vector(text)] for text in vectors]
+    np = _numpy()
     try:
         if op == "dot":
             if len(parsed) != 2:

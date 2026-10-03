@@ -26,26 +26,13 @@ from calc.limits import (
     stop_timeout,
     timeout_seconds,
 )
-from calc.ops import (
-    assert_ops,
-    base_ops,
-    bits_ops,
-    calculus_ops,
-    datetime_ops,
-    distribution_ops,
-    eval_ops,
-    finance_ops,
-    gof_ops,
-    hash_ops,
-    matrix_ops,
-    physics_ops,
-    regex_ops,
-    stat_ops,
-    sym_ops,
-    unit_ops,
-    vector_ops,
-)
+from calc.ops import eval_ops
 from calc.render import render
+
+# Heavy ops modules (scipy/pint/sympy/numpy-backed) are resolved lazily
+# inside the handlers that need them: a fresh process per invocation makes
+# import time user-visible latency, and `calc eval 1+1` must not pay for
+# scipy.stats. eval_ops (simpleeval only) stays module-level.
 
 # Tokens shaped like a registered-style long option (`--foo`, `--foo=1`).
 # Used by _normalize_positionals: an *unregistered* such token is a typo, not
@@ -666,6 +653,27 @@ def _batch_statements(max_input_bytes: int | None) -> list[str]:
 
 
 def _handlers() -> dict:
+    # Each handler resolves its ops module on first call: the module cost is
+    # paid only by the subcommand that needs it (scipy-backed stat/gof/
+    # distribution, pint-backed convert-unit, sympy-backed calculus/sym/
+    # physics). eval (simpleeval) and datetime (stdlib) never trigger the
+    # heavy imports.
+    from typing import Any
+
+    from calc.ops import (  # stdlib-only modules
+        assert_ops,
+        base_ops,
+        bits_ops,
+        hash_ops,
+        matrix_ops,
+        vector_ops,
+    )
+
+    def _lazy(module_name: str) -> Any:
+        from calc import ops as ops_package
+
+        return getattr(ops_package, module_name)
+
     return {
         "eval": lambda a: eval_ops.eval_command(
             a.exprs,
@@ -675,7 +683,7 @@ def _handlers() -> dict:
         "batch": lambda a: eval_ops.eval_command(
             _batch_statements(a.max_input_bytes),
         ),
-        "stat": lambda a: stat_ops.stat_command(
+        "stat": lambda a: _lazy("stat_ops").stat_command(
             a.op,
             a.datasets,
             ddof=a.ddof,
@@ -684,7 +692,7 @@ def _handlers() -> dict:
             alpha=a.alpha,
             n=a.n,
         ),
-        "finance": lambda a: finance_ops.finance(
+        "finance": lambda a: _lazy("finance_ops").finance(
             a.op,
             pv=a.pv,
             fv=a.fv,
@@ -694,8 +702,8 @@ def _handlers() -> dict:
         ),
         "matrix": lambda a: matrix_ops.matrix(a.op, a.matrices),
         "convert-base": lambda a: base_ops.convert(a.value, a.from_base, a.to_base),
-        "convert-unit": lambda a: unit_ops.convert(a.value, a.src, a.dst),
-        "calculus": lambda a: calculus_ops.calculus(
+        "convert-unit": lambda a: _lazy("unit_ops").convert(a.value, a.src, a.dst),
+        "calculus": lambda a: _lazy("calculus_ops").calculus(
             a.op,
             a.expr,
             a.var,
@@ -704,8 +712,8 @@ def _handlers() -> dict:
             approach=a.approach,
             direction=getattr(a, "limit_dir", "both"),
         ),
-        "physics-constant": lambda a: physics_ops.constant(a.symbol),
-        "physics": lambda a: physics_ops.solve(a.domain, a.solve, a.kwargs),
+        "physics-constant": lambda a: _lazy("physics_ops").constant(a.symbol),
+        "physics": lambda a: _lazy("physics_ops").solve(a.domain, a.solve, a.kwargs),
         "vector": lambda a: vector_ops.vector(a.op, a.vectors),
         "bits": lambda a: bits_ops.bits(
             a.op, a.values, width=a.width, fmt=a.format, signed=a.signed
@@ -733,10 +741,10 @@ def _handlers() -> dict:
         ),
         "datetime": lambda a: _datetime_handler(a),
         "regex": lambda a: _regex_handler(a),
-        "distribution": lambda a: distribution_ops.distribution_command(a),
+        "distribution": lambda a: _lazy("distribution_ops").distribution_command(a),
         "assert": lambda a: assert_ops.assert_command(a.op, a.values, atol=a.atol, rtol=a.rtol),
-        "gof": lambda a: gof_ops.gof_command(a),
-        "sym": lambda a: sym_ops.sym_command(a),
+        "gof": lambda a: _lazy("gof_ops").gof_command(a),
+        "sym": lambda a: _lazy("sym_ops").sym_command(a),
     }
 
 
@@ -780,6 +788,8 @@ def _resolved_bytes(
 
 def _regex_handler(a: argparse.Namespace) -> object:
     """Route the regex subcommand's ops (sub takes pattern+replacement+subject)."""
+    from calc.ops import regex_ops
+
     if a.op == "sub":
         if len(a.tokens) != 3:
             raise ArgumentError("regex sub takes exactly pattern, replacement, and subject")
@@ -869,6 +879,8 @@ def _extract_physics_kwargs(argv: Sequence[str]) -> tuple[list[str], dict[str, f
 
 def _datetime_handler(a: argparse.Namespace) -> object:
     """Route the datetime subcommand's ops; --to defaults to UTC."""
+    from calc.ops import datetime_ops
+
     if a.op == "from-epoch":
         if len(a.timestamps) != 1:
             raise ArgumentError("datetime from-epoch takes exactly 1 timestamp")

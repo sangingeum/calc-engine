@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import json
 
-import numpy as np
-
 from calc.errors import ArgumentError, MathError, SyntaxError_
 
 _OPS = ("multiply", "add", "subtract", "inverse", "determinant", "transpose")
+
+
+def _numpy():
+    """numpy is resolved lazily: plain eval/stat calls must not pay for it."""
+    import numpy as np
+
+    return np
 
 
 def _parse_matrix(text: str) -> list[list[float]]:
@@ -35,6 +40,7 @@ def matrix(op: str, matrices: list[str]) -> object:
             f"unknown matrix operation: {op} (expected one of {', '.join(_OPS)})"
         )
     parsed = [_parse_matrix(text) for text in matrices]
+    np = _numpy()
     try:
         if op == "multiply":
             if len(parsed) != 2:
