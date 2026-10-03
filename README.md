@@ -168,6 +168,17 @@ Sign names: `positive, negative, zero, nonnegative, nonpositive`. A failed
 assertion is a domain failure: stderr `AssertionError: ...`, exit 1, empty
 stdout. `abs-lt`/`abs-gt` compare absolute values.
 
+### check — expression assertion (one-call QA gate)
+
+Like `assert approx` but both sides are full eval expressions; tolerances
+default tighter (`atol=rtol=1e-9`).
+
+```bash
+calc check --actual "0.1+0.2" --expected "0.3"           # true
+calc check --actual "1/3" --expected "0.333"             # false (exit 0 — a false answer is a valid result)
+calc check --actual "1/3" --expected "0.333" --strict    # exit 1, stderr CheckFailed: actual=... expected=...
+```
+
 ### finance — financial operations
 
 Mirrors numpy-financial signatures with strict exactly-required-set

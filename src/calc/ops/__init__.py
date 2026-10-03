@@ -21,6 +21,7 @@ _MODULES = (
     "base_ops",
     "bits_ops",
     "calculus_ops",
+    "check_ops",
     "datetime_ops",
     "distribution_ops",
     "eval_ops",

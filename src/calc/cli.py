@@ -495,6 +495,21 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--atol", type=float, default=1e-6, help="approx: absolute tolerance")
     p.add_argument("--rtol", type=float, default=1e-6, help="approx: relative tolerance")
 
+    p = sub.add_parser(
+        "check",
+        parents=[precision_parent, timeout_parent],
+        help="expression assertion: prints true/false (strict failure: CheckFailed)",
+    )
+    p.add_argument("--actual", required=True, help="actual expression, e.g. '0.1+0.2'")
+    p.add_argument("--expected", required=True, help="expected expression, e.g. '0.3'")
+    p.add_argument("--atol", type=float, default=1e-9, help="absolute tolerance")
+    p.add_argument("--rtol", type=float, default=1e-9, help="relative tolerance")
+    p.add_argument(
+        "--strict",
+        action="store_true",
+        help="a false check is a domain failure (CheckFailed, exit 1)",
+    )
+
     return parser
 
 
@@ -743,6 +758,13 @@ def _handlers() -> dict:
         "regex": lambda a: _regex_handler(a),
         "distribution": lambda a: _lazy("distribution_ops").distribution_command(a),
         "assert": lambda a: assert_ops.assert_command(a.op, a.values, atol=a.atol, rtol=a.rtol),
+        "check": lambda a: _lazy("check_ops").check(
+            a.actual,
+            a.expected,
+            atol=a.atol,
+            rtol=a.rtol,
+            strict=a.strict,
+        ),
         "gof": lambda a: _lazy("gof_ops").gof_command(a),
         "sym": lambda a: _lazy("sym_ops").sym_command(a),
     }

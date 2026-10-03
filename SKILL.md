@@ -1,6 +1,6 @@
 ---
 name: calc-engine
-description: Deterministic `calc` CLI math engine for AI agents — zero-chat stdout, typed stderr errors, 22 subcommands (eval, batch, stat, finance, matrix, convert-base, convert-unit, calculus, physics-constant, physics, vector, bits, endian, hash, crc, base64, datetime, regex, distribution, assert, gof, sym). Use whenever an agent needs safe computation or statistical/probabilistic verification offloaded to a subprocess.
+description: Deterministic `calc` CLI math engine for AI agents — zero-chat stdout, typed stderr errors, 23 subcommands (eval, batch, stat, finance, matrix, convert-base, convert-unit, calculus, physics-constant, physics, vector, bits, endian, hash, crc, base64, datetime, regex, distribution, assert, check, gof, sym). Use whenever an agent needs safe computation or statistical/probabilistic verification offloaded to a subprocess.
 ---
 
 # calc — CLI math engine for agents
@@ -525,12 +525,29 @@ calc assert abs-gt 0.10 0.05                # true — |a| > |b|
 ```
 
 Sign names (exhaustive): `positive, negative, zero, nonnegative, nonpositive`.
-
 Failure is a domain failure: stdout stays empty, stderr is exactly one
 `AssertionError: description` line, exit code 1. Malformed calls (unknown
 sign, wrong operand count, `low > high` in between) are `ArgumentError`.
 
----
+## check — expression assertion (QA-gate one-call)
+
+`assert` takes numeric literals; `check` evaluates FULL eval expressions on
+both sides — use it instead of re-deriving a value to compare.
+
+```bash
+calc check --actual "0.1+0.2" --expected "0.3"          # true  (tolerances atol=rtol=1e-9)
+calc check --actual "1/3" --expected "0.333"            # false — but exit 0 (a negative answer is a valid result)
+calc check --actual "1/3" --expected "0.333" --strict   # exit 1, stderr CheckFailed: actual=... expected=...
+calc check --actual "1000.0001" --expected "1000" --rtol 1e-6 --atol 0   # true
+```
+
+- Comparison: `abs(a−e) ≤ atol + rtol·abs(e)`.
+- Output is literally `true`/`false`; exit 0 in both cases — a false check
+  is a valid ANSWER, not a failure. With `--strict` a false check is a
+  domain failure: stderr `CheckFailed: actual=<a> expected=<b>`, exit 1,
+  empty stdout.
+- Both expressions run through the same evaluator (all eval functions;
+  `--let` bindings and assignments are NOT supported in check operands).
 
 ## Error handling (self-correction protocol)
 
@@ -543,6 +560,8 @@ On failure, parse the stderr prefix and adjust the call:
 | `ValueError:` | unknown unit or physical constant | use a standard unit string (e.g. `degC`) or known symbol |
 | `ArgumentError:` | missing/extra args, unknown operation/domain/symbol | provide exactly the required argument set |
 | `AssertionError:` | failed `assert` operation | the asserted claim is false; not a usage error |
+| `LimitError:` | resource guard: timeout, oversized argument, result beyond the digit limit | shrink the request (fewer digits, smaller arguments) or raise the cap via CALC_* env vars |
+| `CheckFailed:` | failed `check --strict` | the compared values differ beyond tolerance |
 
 Always treat non-zero exit as failure; never depend on stderr when exit is 0
 (stderr is empty on success).
