@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from calc.errors import ArgumentError, UnitError
+from calc.errors import ArgumentError, SyntaxError_, UnitError
 
 _ADD_UNITS: dict[str, timedelta] = {}
 
@@ -80,12 +80,77 @@ def add(
     minutes: float = 0.0,
     seconds: float = 0.0,
     weeks: float = 0.0,
+    months: int = 0,
+    years: int = 0,
     tz: str | None = None,
 ) -> str:
-    """Shift a timestamp by calendar-safe units only (no month arithmetic)."""
-    delta = timedelta(days=days, hours=hours, minutes=minutes, seconds=seconds, weeks=weeks)
+    """Shift a timestamp by calendar-safe and calendar units.
+
+    months/years are WHOLE calendar units with end-of-month clamping
+    (Jan 31 + 1 month = Feb 28/29). Fractional months/years are an
+    ArgumentError. Non-calendar units remain exact timedeltas.
+    """
+    if months != int(months) or years != int(years):
+        raise ArgumentError("--months/--years take whole numbers")
+    months_i, years_i = int(months), int(years)
     parsed = _parse_timestamp(timestamp, tz_name=tz)
+    if months_i != 0 or years_i != 0:
+        # calendar arithmetic on the wall-clock fields, preserving the offset
+        total = (parsed.year + years_i) * 12 + (parsed.month - 1) + months_i
+        new_year, new_month = divmod(total, 12)
+        new_month += 1
+        last_day = _days_in_month(new_year, new_month)
+        new_day = min(parsed.day, last_day)
+        parsed = parsed.replace(year=new_year, month=new_month, day=new_day)
+    delta = timedelta(days=days, hours=hours, minutes=minutes, seconds=seconds, weeks=weeks)
     return _iso(parsed + delta)
+
+
+def _days_in_month(year: int, month: int) -> int:
+    if month == 12:
+        return 31
+    return (datetime(year + (month == 12), month % 12 + 1, 1) - datetime(year, month, 1)).days
+
+
+def business_days(left: str, right: str, *, holidays: str | None = None) -> int:
+    """Count Mon-Fri days in [left, right) minus holidays inside the range.
+
+    Half-open convention: the end date is EXCLUDED. Date-only inputs are
+    accepted (naive date = midnight UTC). holidays is a JSON array of
+    YYYY-MM-DD strings.
+    """
+    import json
+
+    a = _parse_date(left)
+    b = _parse_date(right)
+    holiday_set: set[str] = set()
+    if holidays is not None:
+        try:
+            raw = json.loads(holidays)
+        except json.JSONDecodeError as exc:
+            raise SyntaxError_(f"invalid holidays JSON: {exc}") from None
+        if not isinstance(raw, list) or not all(isinstance(x, str) for x in raw):
+            raise SyntaxError_("holidays must be a JSON array of YYYY-MM-DD strings")
+        holiday_set = set(raw)
+    count = 0
+    cursor = a
+    step = timedelta(days=1)
+    while cursor < b:
+        if cursor.isoweekday() <= 5 and cursor.date().isoformat() not in holiday_set:
+            count += 1
+        cursor += step
+    return count
+
+
+def _parse_date(text: str) -> datetime:
+    """Parse a date or datetime; naive input is midnight UTC (date math only)."""
+    try:
+        parsed = datetime.fromisoformat(text.strip())
+    except ValueError:
+        raise ArgumentError(f"invalid date: {text!r}") from None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed
 
 
 _WEEKDAYS = (

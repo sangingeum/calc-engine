@@ -375,8 +375,10 @@ calc base64 encode "hello?>" --urlsafe  # URL-safe alphabet (-_)
 The reference time is always passed in as an argument (no `now`). Output is
 ISO-8601 with explicit offset. **Naive timestamps are an `ArgumentError`**
 unless `--tz`/`--from` supplies the zone; unknown timezones are a
-`ValueError`. `add` supports only `--days --hours --minutes --seconds --weeks`
-(month arithmetic is deliberately absent — "Jan 31 + 1 month" is ambiguous).
+`ValueError`. `add` supports `--days --hours --minutes --seconds --weeks`
+(exact timedeltas) plus whole calendar units `--months N --years N`
+(end-of-month clamped: Jan 31 + 1 month = Feb 28/29; fractional values are
+an `ArgumentError`).
 
 ```bash
 calc datetime from-epoch 1700000000                       # 2023-11-14T22:13:20+00:00
@@ -385,10 +387,18 @@ calc datetime to-epoch "2023-11-14T22:13:20+00:00"        # 1700000000
 calc datetime diff "2024-01-01T00:00:00+00:00" "2024-03-01T00:00:00+00:00" --unit days
                                                           # 60.0000 (right - left)
 calc datetime add "2024-02-28T12:00:00+00:00" --days 2    # 2024-03-01T12:00:00+00:00
+calc datetime add "2026-01-31T00:00:00+00:00" --months 1  # 2026-02-28T00:00:00+00:00 (clamped)
 calc datetime weekday "2024-02-29"                        # Thursday
 calc datetime convert-tz "2024-03-10T12:00:00" --from America/New_York --to Asia/Seoul
                                                           # 2024-03-11T01:00:00+09:00
+calc datetime business-days 2026-10-05 2026-10-16         # 9 (Mon-Fri in [A, B) — end EXCLUDED)
+calc datetime business-days 2026-10-05 2026-10-16 --holidays '["2026-10-09"]'
+                                                          # 8
 ```
+
+`business-days` counts Monday–Friday dates in the half-open range
+`[A, B)` minus the `--holidays` JSON array (YYYY-MM-DD strings); date-only
+inputs are accepted.
 
 ### regex — pattern operations (Python dialect only)
 

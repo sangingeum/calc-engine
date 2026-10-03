@@ -291,8 +291,11 @@ Notes:
   binary32/binary64); width 8/16 is an `ArgumentError` (no half-precision
   in v1).
 - **datetime**: a naive timestamp (no offset) without `--tz`/`--from` is an
-  `ArgumentError`; unknown timezone is `ValueError`; `add` supports only
-  days/hours/minutes/seconds/weeks (no month arithmetic).
+  `ArgumentError`; unknown timezone is `ValueError`; `add` supports
+  days/hours/minutes/seconds/weeks as exact timedeltas plus WHOLE calendar
+  `--months`/`--years` (end-of-month clamped; fractional is `ArgumentError`);
+  `business-days A B [--holidays '[...]']` counts Mon–Fri dates in `[A, B)`
+  (end exclusive) minus holidays; date-only inputs accepted.
 - **regex**: **Python dialect only; verify separately for other languages.**
   `test` returning false is a normal success (exit 0); invalid pattern is
   `SyntaxError`; matching is guarded by a 2 s subprocess timeout

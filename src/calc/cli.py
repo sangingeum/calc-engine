@@ -314,7 +314,7 @@ def _build_parser() -> argparse.ArgumentParser:
         parents=[precision_parent],
         help="date/time operations (reference time always passed in)",
     )
-    p.add_argument("op", help="from-epoch|to-epoch|diff|add|weekday|convert-tz")
+    p.add_argument("op", help="from-epoch|to-epoch|diff|add|weekday|convert-tz|business-days")
     p.add_argument("timestamps", nargs="+", help="epoch seconds, ISO-8601 timestamp, or date")
     p.add_argument("--tz", default=None, help="display/source timezone, e.g. Asia/Seoul")
     p.add_argument(
@@ -330,6 +330,18 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--minutes", type=float, default=0.0, help="add: minutes")
     p.add_argument("--seconds", type=float, default=0.0, help="add: seconds")
     p.add_argument("--weeks", type=float, default=0.0, help="add: weeks")
+    p.add_argument(
+        "--months", type=float, default=0.0, help="add: whole calendar months (clamped)"
+    )
+    p.add_argument(
+        "--years", type=float, default=0.0, help="add: whole calendar years (clamped)"
+    )
+    p.add_argument(
+        "--holidays",
+        dest="holidays",
+        default=None,
+        help='business-days: JSON array of YYYY-MM-DD, e.g. \'["2026-10-09"]\'',
+    )
 
     p = sub.add_parser(
         "regex",
@@ -936,7 +948,15 @@ def _datetime_handler(a: argparse.Namespace) -> object:
             minutes=a.minutes,
             seconds=a.seconds,
             weeks=a.weeks,
+            months=a.months,
+            years=a.years,
             tz=a.tz,
+        )
+    if a.op == "business-days":
+        if len(a.timestamps) != 2:
+            raise ArgumentError("datetime business-days takes exactly 2 dates (A B)")
+        return datetime_ops.business_days(
+            a.timestamps[0], a.timestamps[1], holidays=a.holidays
         )
     if a.op == "weekday":
         if len(a.timestamps) != 1:
@@ -950,7 +970,8 @@ def _datetime_handler(a: argparse.Namespace) -> object:
         )
     raise ArgumentError(
         "unknown datetime operation: "
-        f"{a.op!r} (expected from-epoch|to-epoch|diff|add|weekday|convert-tz)"
+        f"{a.op!r} (expected from-epoch|to-epoch|diff|add|weekday|convert-tz"
+        "|business-days)"
     )
 
 
