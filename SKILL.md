@@ -232,9 +232,17 @@ calc stat regression "[0,1,2,3]" "[1,3,5,7]" --field slope   # 2.0000
 #   --field: slope|intercept|r2|stderr|slope_stderr|residual_stderr|residual_variance
 #   stderr IS slope_stderr (explicit alias); residual_stderr = sqrt(SSR/(n-2)); residual_variance = SSR/(n-2)
 calc stat quantile "[1,2,3,4,5]" 0.5          # 3.0000 — NumPy 'linear': h=(n-1)*q
+calc stat percentile "[1,2,3,4,5]" 90         # 4.6000 — P in [0,100], = quantile q=P/100
+calc stat multimode "[1,1,2,2,3]"             # [1,2] — ALL modes sorted ascending (mode: FIRST only)
+calc stat mad "[1,2,3,4]"                     # 1.0000 — median absolute deviation
+calc stat range "[1,7]"                       # 6
+calc stat zscore "[1,2,3,4]" 2                # -0.3873 — (x-mean)/stdev(ddof=1); zero sigma -> MathError
 calc finance fv --rate 0.05 --periods 10 --pv 1000
 calc finance pv --rate 0.05 --periods 10 --fv 1628.89
 calc finance pmt --rate 0.05 --periods 10 --principal 1000   # pmt: --principal, --pv alias; strict exact arg sets
+calc finance npv --rate 0.1 --cashflows "[-1000,110,121]"    # -800.0000 — SIGN: invest NEGATIVE, receive POSITIVE
+calc finance irr --cashflows "[-100,110]"                    # 0.1000 (10%); no sign change -> MathError
+calc finance nper --rate 0.05 --pmt -129.5046 --pv 1000      # 10.0000 periods (rate 0: -pv/pmt)
 calc matrix multiply "[[1,2],[3,4]]" "[[1],[2]]"    # multiply|add|subtract|inverse|determinant|transpose|solve|rank|trace|power|scale|identity (strict JSON)
 calc matrix solve "[[2,1],[1,3]]" "[3,5]"           # [0.8000,1.4000] — square A; singular -> MathError
 calc matrix rank "[[1,2],[2,4]]"                    # 1; trace -> 5.0000; power/scale/identity too

@@ -23,6 +23,7 @@ _OPS = (
     "mean",
     "median",
     "mode",
+    "multimode",
     "stdev",
     "variance",
     "pvariance",
@@ -32,6 +33,8 @@ _OPS = (
     "count",
     "geometric_mean",
     "harmonic_mean",
+    "mad",
+    "range",
 )
 
 
@@ -47,7 +50,7 @@ def _parse_dataset(dataset: str) -> list[float]:
     return data  # preserve ints so integer-valued ops render bare
 
 
-def stat(op: str, dataset: str) -> int | float:
+def stat(op: str, dataset: str) -> int | float | list[float]:
     """Apply a statistics operation to a JSON array of numbers."""
     data = _parse_dataset(dataset)
     if op not in _OPS:
@@ -60,6 +63,16 @@ def stat(op: str, dataset: str) -> int | float:
         if op == "mode":
             # Ratified: first mode only on multimodal data (single-value stdout).
             return statistics.multimode(data)[0]
+        if op == "multimode":
+            # ALL modes, sorted ascending (documented exception to first-mode).
+            return sorted(statistics.multimode(data))
+        if op == "mad":
+            if len(data) < 1:
+                raise MathError("empty dataset")
+            med = statistics.median(data)
+            return statistics.median([abs(x - med) for x in data])
+        if op == "range":
+            return max(data) - min(data)
         if op == "mean":
             return statistics.mean(data)
         if op == "median":
@@ -85,6 +98,8 @@ def stat(op: str, dataset: str) -> int | float:
 
 _UNIVARIATE_OPS = frozenset(_OPS) | {
     "quantile",
+    "percentile",
+    "zscore",
     "rank",
     "skewness",
     "kurtosis",
@@ -126,6 +141,33 @@ def stat_command(
             except ValueError:
                 raise ArgumentError("stat quantile q must be a number in [0, 1]") from None
             return quantile(datasets[0], q)
+        if op == "percentile":
+            if len(datasets) != 2:
+                raise ArgumentError("stat percentile takes exactly a dataset and a P value")
+            try:
+                p = float(datasets[1])
+            except ValueError:
+                raise ArgumentError(
+                    "stat percentile P must be a number in [0, 100]"
+                ) from None
+            if not 0 <= p <= 100:
+                raise MathError("stat percentile P must be in [0, 100]")
+            return quantile(datasets[0], p / 100)
+        if op == "zscore":
+            if len(datasets) != 2:
+                raise ArgumentError("stat zscore takes exactly a dataset and an x value")
+            try:
+                x = float(datasets[1])
+            except ValueError:
+                raise ArgumentError("stat zscore x must be a number") from None
+            data = _parse_series(datasets[0])
+            if len(data) < 2:
+                raise MathError("stat zscore needs at least 2 observations")
+            mu = statistics.fmean(data)
+            sigma = statistics.stdev(data)  # sample stdev (ddof=1), documented
+            if sigma == 0:
+                raise MathError("stat zscore undefined: zero standard deviation")
+            return (x - mu) / sigma
         if len(datasets) != 1:
             expected = 2 if op in _PAIRWISE_OPS else 1
             raise ArgumentError(f"stat {op} takes exactly {expected} dataset argument(s)")

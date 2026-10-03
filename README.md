@@ -77,6 +77,11 @@ calc stat rank "[30,10,20]"                           # [3.0000,1.0000,2.0000]
 calc stat regression "[0,1,2,3]" "[1,3,5,7]" --field slope     # 2.0000
 calc stat regression "[0,1,2,3]" "[1,3,5,7]" --field stderr    # slope stderr (alias of slope_stderr)
 calc stat quantile "[1,2,3,4,5]" 0.5                  # 3.0000
+calc stat percentile "[1,2,3,4,5]" 90                 # 4.6000 (P in [0,100]; = quantile q=P/100)
+calc stat multimode "[1,1,2,2,3]"                     # [1,2] (ALL modes, sorted ascending)
+calc stat mad "[1,2,3,4]"                             # 1.0000 (median absolute deviation)
+calc stat range "[1,7]"                               # 6
+calc stat zscore "[1,2,3,4]" 2                        # -0.3873 (x - mean)/sample-stdev(ddof=1)
 ```
 
 Conventions (all pinned by tests):
@@ -201,12 +206,24 @@ Mirrors numpy-financial signatures with strict exactly-required-set
 validation — providing anything other than the exact required set is an
 `ArgumentError`.
 
+**Sign convention (numpy-financial): money invested (cash out) is NEGATIVE,
+money received (cash in) is POSITIVE.** Example: `fv --rate 0.05 --periods
+10 --pv 1000` → `-1628.8946` (the 1000 invested today becomes 1628.89
+received later). Cash-flow arrays for `npv`/`irr` follow the same rule
+(`[-1000,110,121]` = invest 1000, then receive 110, then 121).
+
 ```bash
 calc finance fv  --rate 0.05 --periods 10 --pv 1000
 calc finance pv  --rate 0.05 --periods 10 --fv 1628.89
 calc finance pmt --rate 0.05 --periods 10 --principal 1000
 # pmt also accepts --pv as an alias of --principal (both given -> ArgumentError)
+calc finance npv --rate 0.1 --cashflows "[-1000,110,121]"   # -800.0000
+calc finance irr --cashflows "[-100,110]"                   # 0.1000 (10%)
+calc finance nper --rate 0.05 --pmt -129.5046 --pv 1000     # 10.0000 periods
 ```
+
+`irr` with cash flows that never change sign is `MathError: no real IRR
+found`; `nper` at rate 0 uses the closed form `-pv/pmt`.
 
 ### matrix — matrix operations (JSON)
 

@@ -118,8 +118,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "op",
         help=(
-            "mean|median|mode|stdev|variance|pvariance|sum|min|max|count"
-            "|geometric_mean|harmonic_mean"
+            "mean|median|mode|multimode|stdev|variance|pvariance|sum|min|max|count"
+            "|geometric_mean|harmonic_mean|mad|range|zscore|percentile"
             "|covariance|pearson|spearman|regression|quantile|rank"
             "|skewness|kurtosis|excess-kurtosis|critical-r"
         ),
@@ -172,6 +172,19 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--fv", type=float, default=None, help="future value")
     p.add_argument("--principal", type=float, default=None, help="principal (pmt)")
+    p.add_argument(
+        "--cashflows",
+        dest="cashflows",
+        default=None,
+        help="npv/irr: JSON array of cash flows, e.g. '[-1000,110,121]'",
+    )
+    p.add_argument(
+        "--pmt",
+        dest="pmt",
+        type=float,
+        default=None,
+        help="nper: payment per period",
+    )
 
     p = sub.add_parser(
         "matrix",
@@ -740,6 +753,8 @@ def _handlers() -> dict:
             rate=a.rate,
             periods=a.periods,
             principal=a.principal,
+            cashflows=a.cashflows,
+            pmt=a.pmt,
         ),
         "matrix": lambda a: matrix_ops.matrix(a.op, a.matrices),
         "convert-base": lambda a: base_ops.convert(a.value, a.from_base, a.to_base),
