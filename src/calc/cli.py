@@ -228,6 +228,14 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--lower", type=float, default=None, help="lower bound (definite integrate)")
     p.add_argument("--upper", type=float, default=None, help="upper bound (definite integrate)")
     p.add_argument("--approach", type=float, default=None, help="limit point")
+    p.add_argument(
+        "--dir",
+        dest="limit_dir",
+        default="both",
+        choices=["+", "-", "both"],
+        help="limit direction: both (default) computes left and right sides "
+        "and fails when they disagree",
+    )
 
     p = sub.add_parser(
         "physics-constant",
@@ -688,7 +696,13 @@ def _handlers() -> dict:
         "convert-base": lambda a: base_ops.convert(a.value, a.from_base, a.to_base),
         "convert-unit": lambda a: unit_ops.convert(a.value, a.src, a.dst),
         "calculus": lambda a: calculus_ops.calculus(
-            a.op, a.expr, a.var, lower=a.lower, upper=a.upper, approach=a.approach
+            a.op,
+            a.expr,
+            a.var,
+            lower=a.lower,
+            upper=a.upper,
+            approach=a.approach,
+            direction=getattr(a, "limit_dir", "both"),
         ),
         "physics-constant": lambda a: physics_ops.constant(a.symbol),
         "physics": lambda a: physics_ops.solve(a.domain, a.solve, a.kwargs),

@@ -218,8 +218,14 @@ calc convert-unit 100 degC degF # 212.0000  (offset units handled correctly)
 calc calculus derive "x**2" --var x                          # 2*x
 calc calculus integrate "x**2" --var x                       # x**3/3  (symbolic)
 calc calculus integrate "x**2" --var x --lower 0 --upper 1   # 0.3333
-calc calculus limit "1/x" --var x --approach 0               # inf (see below)
+calc calculus limit "1/x" --var x --approach 0               # MathError (two-sided limit does not exist)
+calc calculus limit "1/x" --var x --approach 0 --dir +       # inf (right-hand)
+calc calculus limit "sin(x)/x" --var x --approach 0          # 1.0000
 ```
+
+`limit` computes BOTH sides by default (`--dir both`); when left and right
+disagree the answer is `MathError: limit does not exist (left=..., right=...)`
+— a one-sided limit must be requested explicitly with `--dir +` or `--dir -`.
 
 ### physics-constant — physical constants
 

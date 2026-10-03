@@ -294,7 +294,14 @@ class TestCalculusOps:
         assert result == pytest.approx(2.0)
 
     def test_limit_infinity(self) -> None:
-        assert calculus_ops.calculus("limit", "1/x", "x", approach=0) == math.inf
+        # the pinned one-sided call: right-hand limit of 1/x at 0 is +oo
+        result = calculus_ops.calculus("limit", "1/x", "x", approach=0, direction="+")
+        assert result == math.inf
+
+    def test_limit_two_sided_fails_on_pole(self) -> None:
+        # default is now two-sided: 1/x at 0 has no two-sided limit
+        with pytest.raises(MathError):
+            calculus_ops.calculus("limit", "1/x", "x", approach=0)
 
     def test_unknown_op(self) -> None:
         with pytest.raises(ArgumentError):

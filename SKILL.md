@@ -238,7 +238,8 @@ calc finance pmt --rate 0.05 --periods 10 --principal 1000   # pmt: --principal,
 calc matrix multiply "[[1,2],[3,4]]" "[[1],[2]]"    # multiply|add|subtract|inverse|determinant|transpose (strict JSON)
 calc calculus derive "x**2 * sin(x)" --var x
 calc calculus integrate "x**2" --var x --lower 0 --upper 1    # definite -> 0.3333; without bounds -> symbolic string
-calc calculus limit "1/x" --var x --approach 0
+calc calculus limit "1/x" --var x --approach 0                 # MathError — two-sided by default; --dir + gives inf
+calc calculus limit "sin(x)/x" --var x --approach 0            # 1.0000 — both sides agree
 calc physics kinematics --solve d --v0 10 --t 2 --a 3         # registry below
 calc vector dot "[1,2,3]" "[4,5,6]"   # dot|cross|norm|add|subtract (strict JSON)
 ```
